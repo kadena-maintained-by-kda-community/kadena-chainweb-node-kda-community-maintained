@@ -64,6 +64,7 @@ import Chainweb.BlockHeight
 import Chainweb.ChainId
 import Chainweb.Difficulty
 import Chainweb.Time
+import Chainweb.ForkState
 import Chainweb.VerifierPlugin
 import qualified Chainweb.VerifierPlugin.Allow
 import qualified Chainweb.VerifierPlugin.Hyperlane.Announcement
@@ -423,16 +424,17 @@ expectedCutHeightAfterSeconds s = eh * int (chainCountAt (round eh))
     eh = expectedBlockHeightAfterSeconds s
 
 -- | The verifier plugins enabled for a particular block.
-verifiersAt :: HasVersion => ChainId -> BlockHeight -> Map VerifierName VerifierPlugin
-verifiersAt cid bh =
+verifiersAt :: HasVersion => ChainId -> ForkNumber -> BlockHeight -> Map VerifierName VerifierPlugin
+verifiersAt cid fn bh =
     M.restrictKeys allVerifierPlugins activeVerifierNames
     where
     activeVerifierNames
         = snd
         $ ruleZipperHere
         $ snd
-        $ ruleSeek (\h _ -> bh >= h)
+        $ ruleSeek (\h _ -> searchKey >= h)
         $ _versionVerifierPluginNames implicitVersion ^?! atChain cid
+    searchKey = ForkAtBlockHeight bh `max` ForkAtForkNumber fn
 
 -- the mappings from names to verifier plugins is global. the list of verifier
 -- plugins active in any particular block validation context is the only thing

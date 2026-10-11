@@ -12,6 +12,7 @@ module Chainweb.Version.EvmDevelopment
 
 import qualified Data.Set as Set
 
+import Chainweb.Pact.InitialGasModel
 import Chainweb.BlockCreationTime
 import Chainweb.ChainId
 import Chainweb.Difficulty
@@ -55,6 +56,10 @@ evmDevnet = withVersion evmDevnet $ ChainwebVersion
     , _versionName = ChainwebVersionName "evm-development"
     , _versionForks = tabulateHashMap $ const $ onAllChains ForkAtGenesis
     , _versionUpgrades = onAllChains mempty
+    , _versionForkNumber = 1
+    , _versionForkVoteCastingLength = 20
+    , _versionSpvProofRootValidWindow = Bottom (minBound, Nothing)
+    , _versionInitialGasModel = onAllChains $ Bottom (minBound, post32GasModel) 
     , _versionGraphs = Bottom (minBound, d4k4ChainGraph)
     , _versionBlockDelay = BlockDelay 30_000_000
     , _versionWindow = WindowWidth 120

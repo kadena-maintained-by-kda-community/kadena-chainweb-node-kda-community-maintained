@@ -316,9 +316,11 @@ applyCmdInBlock logger serviceEnv blockEnv miner txIdxInBlock tx = StateT $ \(bl
   -- we set the command gas limit to the minimum of its original value and the remaining gas in the block
   -- this way Pact never uses more gas than remains in the block, and the tx fails otherwise
   let alteredTx = (view payloadObj <$> tx) & Pact.cmdPayload . Pact.pMeta . pmGasLimit %~ maybe id min (blockGasRemaining ^? traversed)
+  let blockCtx = _psBlockCtx blockEnv
   resultOrGasError <- liftIO $ unsafeApplyCmdInBlock
     blockHandle
-    (initialGasOf (tx ^. Pact.cmdPayload))
+    (initialGasOf implicitVersion (_bctxChainId blockCtx)
+      (_bctxCurrentBlockHeight blockCtx) (_bctxParentForkNumber blockCtx) tx)
     alteredTx
   case resultOrGasError of
     Left err -> throwError err
@@ -538,7 +540,8 @@ execExistingBlock logger serviceEnv blockEnv payload = do
     $ runCoinbase logger blockEnv miner
 
   let blockGasLimit =
-        Pact.GasLimit . Pact.Gas . fromIntegral <$> maxBlockGasLimit (_bctxCurrentBlockHeight blockCtx)
+        Pact.GasLimit . Pact.Gas . fromIntegral <$>
+          maxBlockGasLimit (_bctxParentForkNumber blockCtx) (_bctxCurrentBlockHeight blockCtx)
 
   (V.fromList -> results, _finalBlockGasLimit) <- flip weaveStatesFst blockGasLimit $
     -- flip runStateT (postCoinbaseBlockHandle, blockGasLimit) $

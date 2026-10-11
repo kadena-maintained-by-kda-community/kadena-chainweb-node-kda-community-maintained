@@ -38,6 +38,7 @@ module Chainweb.Version
     -- * Properties of Chainweb Version
       Fork(..)
     , ForkHeight(..)
+    , succByHeight
     , _ForkAtBlockHeight
     , _ForkAtGenesis
     , _ForkNever
@@ -70,12 +71,15 @@ module Chainweb.Version
     , versionGraphs
     , versionHeaderBaseSizeBytes
     , versionMaxBlockGasLimit
-    , versionMinimumBlockHeaderHistory
+    , versionInitialGasModel
+    , versionSpvProofRootValidWindow
     , versionName
     , versionWindow
     , versionGenesis
     , versionVerifierPluginNames
     , versionQuirks
+    , versionForkNumber
+    , versionForkVoteCastingLength
     , versionServiceDate
     , versionPayloadProviderTypes
     , genesisBlockPayload
@@ -84,6 +88,9 @@ module Chainweb.Version
     , genesisTime
     , genesisBlockHeight
     , genesisHeightAndGraph
+    , voteCountingLength
+    , decideVotes
+    , forkEpochLength
 
     , PactUpgrade(..)
 
@@ -162,6 +169,7 @@ import Data.HashMap.Strict qualified as HM
 import Data.HashSet qualified as HS
 import Data.Set(Set)
 import Data.Proxy
+import Data.Ratio
 import Data.Text qualified as T
 import Data.Word
 import GHC.Generics(Generic)
@@ -180,13 +188,15 @@ import Chainweb.HostAddress
 import Chainweb.MerkleUniverse
 import Chainweb.Pact.Payload
 import Chainweb.Pact.Transaction qualified as Pact
+import Chainweb.Pact4.Transaction qualified as Pact4
+import Chainweb.Pact.InitialGasModel
+import Chainweb.ForkState
 import Chainweb.Utils
 import Chainweb.Utils.Rule
 import Chainweb.Utils.Serialization
 import Data.Singletons
 import P2P.Peer
 import GHC.Exts (WithDict(..))
-import Chainweb.Pact4.Transaction qualified as Pact4
 import Data.Bifunctor
 
 -- -------------------------------------------------------------------------- --
@@ -228,14 +238,13 @@ data Fork
     | Chainweb223Pact
     | Chainweb224Pact
     | Chainweb225Pact
-    | Chainweb226Pact
     | Pact5Fork
     | Chainweb228Pact
-    | Chainweb229Pact
     | HashedAdjacentRecord
     | Chainweb230Pact
     | Chainweb231Pact
-    | Chainweb232Pact
+    | Chainweb31
+    | Chainweb32
     | MigratePlatformShare
     -- always add new forks at the end, not in the middle of the constructors.
     deriving stock (Bounded, Generic, Eq, Enum, Ord, Show)
@@ -272,14 +281,13 @@ instance HasTextRepresentation Fork where
     toText Chainweb223Pact = "chainweb223Pact"
     toText Chainweb224Pact = "chainweb224Pact"
     toText Chainweb225Pact = "chainweb225Pact"
-    toText Chainweb226Pact = "chainweb226Pact"
     toText Pact5Fork = "pact5"
     toText Chainweb228Pact = "chainweb228Pact"
-    toText Chainweb229Pact = "chainweb229Pact"
     toText HashedAdjacentRecord = "hashedAdjacentRecord"
     toText Chainweb230Pact = "chainweb230Pact"
     toText Chainweb231Pact = "chainweb231Pact"
-    toText Chainweb232Pact = "chainweb232Pact"
+    toText Chainweb31 = "chainweb31"
+    toText Chainweb32 = "chainweb32"
     toText MigratePlatformShare = "migratePlatformShare"
 
     fromText "slowEpoch" = return SlowEpoch
@@ -312,14 +320,13 @@ instance HasTextRepresentation Fork where
     fromText "chainweb223Pact" = return Chainweb223Pact
     fromText "chainweb224Pact" = return Chainweb224Pact
     fromText "chainweb225Pact" = return Chainweb225Pact
-    fromText "chainweb226Pact" = return Chainweb226Pact
     fromText "pact5" = return Pact5Fork
     fromText "chainweb228Pact" = return Chainweb228Pact
-    fromText "chainweb229Pact" = return Chainweb229Pact
     fromText "hashedAdjacentRecord" = return HashedAdjacentRecord
     fromText "chainweb230Pact" = return Chainweb230Pact
     fromText "chainweb231Pact" = return Chainweb231Pact
-    fromText "chainweb232Pact" = return Chainweb232Pact
+    fromText "chainweb31" = return Chainweb31
+    fromText "chainweb32" = return Chainweb32
     fromText "migratePlatformShare" = return MigratePlatformShare
     fromText t = throwM . TextFormatException $ "Unknown Chainweb fork: " <> t
 
@@ -332,14 +339,53 @@ instance FromJSON Fork where
 instance FromJSONKey Fork where
     fromJSONKey = FromJSONKeyTextParser $ either fail return . first displayException . fromText
 
-data ForkHeight = ForkAtBlockHeight BlockHeight | ForkAtGenesis | ForkNever
-    deriving stock (Generic, Eq, Ord, Show)
+data ForkHeight =  ForkAtForkNumber !ForkNumber | ForkAtBlockHeight !BlockHeight | ForkAtGenesis | ForkNever
+    deriving stock (Generic, Eq, Show)
     deriving anyclass (Hashable, NFData)
+
+instance Bounded ForkHeight where
+    minBound = ForkAtGenesis
+    maxBound = ForkNever
+
+instance Ord ForkHeight where
+    compare ForkAtGenesis ForkAtGenesis = EQ
+    compare ForkNever ForkNever = EQ
+    compare (ForkAtForkNumber a) (ForkAtForkNumber b) = compare a b
+    compare (ForkAtBlockHeight a)  (ForkAtBlockHeight b) = compare a b
+    compare ForkAtGenesis  _ = LT
+    compare _ ForkAtGenesis = GT
+    compare ForkNever _ = GT
+    compare _ ForkNever = LT
+    compare (ForkAtForkNumber fn) (ForkAtBlockHeight _)
+        | fn == 0 = LT
+        | otherwise = GT
+    compare (ForkAtBlockHeight _) (ForkAtForkNumber fn)
+        | fn == 0 = GT
+        | otherwise = LT
+
+-- We consider the following ordering for Forks:
+--   - ForkAtGenesis
+--   - ForkNumber = 0  (unusual case)
+--   - BlockHeight = 0 (unusual case)
+--   - BlockHeight = 1
+--          ..
+--   - BlockHeight = n
+--   - ForkNumber = 1
+--          ..
+--   - ForkNumber = n
+--   - ForkNever
+--
+-- During the LLC era, forks were triggered by block heights, with a fork number of 0 (called feature flag).
+-- After version 3.1, forks are ONLY triggered by fork numbers, as soon as the fork number becomes equal to 1.
+-- So the fork heights are sorted chronologically: first block heights, then fork numbers.
+
 
 makePrisms ''ForkHeight
 
--- -------------------------------------------------------------------------- --
--- Chainweb Version Name
+succByHeight :: ForkHeight -> ForkHeight
+succByHeight (ForkAtBlockHeight x) = ForkAtBlockHeight $ succ x
+succByHeight ForkNever = ForkNever
+succByHeight _ = error "Only a Blockheight defined fork can be succ'ed"
 
 newtype ChainwebVersionName =
     ChainwebVersionName { getChainwebVersionName :: T.Text }
@@ -507,11 +553,13 @@ data ChainwebVersion
         --
         -- NOTE: This is internal. For the actual size of the serialized header
         -- use 'headerSizeBytes'.
-    , _versionMaxBlockGasLimit :: Rule BlockHeight (Maybe Natural)
+    , _versionMaxBlockGasLimit :: Rule ForkHeight (Maybe Natural)
         -- ^ The maximum gas limit for an entire block.
-    , _versionMinimumBlockHeaderHistory :: Rule BlockHeight (Maybe Word64)
+    , _versionSpvProofRootValidWindow :: Rule ForkHeight (Maybe Word64)
         -- ^ The minimum number of block headers a chainweb node should
         -- retain in its history at all times.
+    , _versionInitialGasModel :: ChainMap (Rule ForkHeight (InitialGasModel))
+        -- ^ The initial gas model used for Pact 5 transactions processing
     , _versionBootstraps :: [PeerInfo]
         -- ^ The locations of the bootstrap peers.
     , _versionGenesis :: VersionGenesis
@@ -523,7 +571,7 @@ data ChainwebVersion
         -- ^ Whether to disable any core functionality.
     , _versionDefaults :: VersionDefaults
         -- ^ Version-specific defaults that can be overridden elsewhere.
-    , _versionVerifierPluginNames :: ChainMap (Rule BlockHeight (Set VerifierName))
+    , _versionVerifierPluginNames :: ChainMap (Rule ForkHeight (Set VerifierName))
         -- ^ Verifier plugins that can be run to verify transaction contents.
     , _versionQuirks :: VersionQuirks
         -- ^ Modifications to behavior at particular blockheights
@@ -531,6 +579,26 @@ data ChainwebVersion
         -- ^ The node service date for this version.
     , _versionPayloadProviderTypes :: ChainMap PayloadProviderType
         -- ^ The payload provider type for each chain
+    , _versionForkNumber :: ForkNumber
+        -- ^ The current fork number for this version. Starting with
+        -- chainweb-node version 2.33, fork numbers replace named forks. Fork
+        -- numbers are monotonically increasing in steps of one. Protocol
+        -- changes are guarded by minimum fork number. The fork number of a
+        -- version specifies what forks are supported by a version of
+        -- chainweb-node for a given chainweb version. Note, that it does /not/
+        -- specify what forks are active. Forks are only active if the the fork
+        -- number of the respective block header is at least the fork number of
+        -- the respective fork.
+        --
+        -- Changes to the protocol are introduced by releasing a chainweb-node
+        -- version that supports a fork number of the respecive change. Blocks
+        -- that are produced by the new chainweb-node version will then raise
+        -- the on-chain fork number in the block headers until the maximum
+        -- supported number is reached.
+    , _versionForkVoteCastingLength :: Natural
+        -- ^ The length of the vote-making period in the fork epoch. 2/3rds of
+        -- these blocks must be votes in favor of increasing the fork number for
+        -- that increase to take effect.
     }
     deriving stock (Generic)
     deriving anyclass NFData
@@ -563,6 +631,9 @@ instance Ord ChainwebVersion where
         -- , _versionGenesis v `compare` _versionGenesis v'
         , _versionCheats v `compare` _versionCheats v'
         , _versionVerifierPluginNames v `compare` _versionVerifierPluginNames v'
+        , _versionForkNumber v `compare` _versionForkNumber v'
+        , _versionForkVoteCastingLength v `compare` _versionForkVoteCastingLength v'
+        , _versionSpvProofRootValidWindow v `compare` _versionSpvProofRootValidWindow v'
         ]
 
 -- FIXME this instance is not consistent with the Ord instance above
@@ -572,6 +643,20 @@ instance Eq ChainwebVersion where
         , _versionUpgrades v == _versionUpgrades v'
         , _versionGenesis v == _versionGenesis v'
         ]
+
+-- | The last 120 blocks in a fork epoch are used to count the votes.
+--
+voteCountingLength :: Natural
+voteCountingLength = 120
+
+-- | The length of the fork epoch, both vote casting and counting.
+forkEpochLength :: HasVersion => Natural
+forkEpochLength = _versionForkVoteCastingLength implicitVersion + voteCountingLength
+
+-- | 2/3rds majority of the votes?
+decideVotes :: HasVersion => ForkVotes -> Bool
+decideVotes votes =
+    round (votes % voteStep) * 3 >= _versionForkVoteCastingLength implicitVersion * 2
 
 data VersionDefaults = VersionDefaults
     { _disablePeerValidation :: Bool

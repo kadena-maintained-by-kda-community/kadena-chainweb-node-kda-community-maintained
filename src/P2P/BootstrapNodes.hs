@@ -14,6 +14,7 @@ module P2P.BootstrapNodes
 ( mainnetBootstrapHosts
 , testnet04BootstrapHosts
 , evmTestnetBootstrapHosts
+, testnet06BootstrapHosts
 ) where
 
 -- internal modules
@@ -31,13 +32,13 @@ import Chainweb.HostAddress
 --
 mainnetBootstrapHosts :: [HostAddress]
 mainnetBootstrapHosts = map unsafeHostAddressFromText
-    [ "fr-1.chainweb-community.org:443"
-    , "nl-1.chainweb-community.org:443"
-    , "pl-1.chainweb-community.org:443"
-    , "pl-2.chainweb-community.org:443"
-    , "ca-1.chainweb-community.org:443"
-    , "us-e1.bootstrap.kadinic.com:443"
-    ]
+     [ "fr-1.chainweb-community.org:443"
+     , "nl-1.chainweb-community.org:443"
+     , "pl-1.chainweb-community.org:443"
+     , "pl-2.chainweb-community.org:443"
+     , "ca-1.chainweb-community.org:443"
+     , "us-e1.bootstrap.kadinic.com:443"
+     ]
 
 -- -------------------------------------------------------------------------- --
 -- | Testnet04 bootstrap nodes.
@@ -49,16 +50,31 @@ mainnetBootstrapHosts = map unsafeHostAddressFromText
 -- Please make a pull request, if you like to see your node being included here.
 --
 testnet04BootstrapHosts :: [HostAddress]
-testnet04BootstrapHosts = map unsafeHostAddressFromText
-    [ "us1.testnet.chainweb.com:443"
-    , "us2.testnet.chainweb.com:443"
-    , "eu1.testnet.chainweb.com:443"
-    , "eu2.testnet.chainweb.com:443"
-    , "ap1.testnet.chainweb.com:443"
-    , "ap2.testnet.chainweb.com:443"
-    ]
+testnet04BootstrapHosts = []
+-- testnet04BootstrapHosts = map unsafeHostAddressFromText
+--     [ "us1.testnet.chainweb.com:443"
+--     , "us2.testnet.chainweb.com:443"
+--     , "eu1.testnet.chainweb.com:443"
+--     , "eu2.testnet.chainweb.com:443"
+--     , "ap1.testnet.chainweb.com:443"
+--     , "ap2.testnet.chainweb.com:443"
+--     ]
+
+-- -------------------------------------------------------------------------- --
+-- | Testnet06 bootstrap nodes.
+--
+-- Nodes in this list need a public DNS name and a corresponding TLS
+-- certificate. Operators of the nodes are expected to guarantee long term
+-- availability of the nodes.
+--
+-- Please make a pull request, if you like to see your node being included here.
+--
+testnet06BootstrapHosts :: [HostAddress]
+testnet06BootstrapHosts = map unsafeHostAddressFromText
+     [ "testnet06-1.chainweb-community.org:443"
+     , "testnet06-2.chainweb-community.org:443"
+     ]
+
 
 evmTestnetBootstrapHosts :: [HostAddress]
-evmTestnetBootstrapHosts = map unsafeHostAddressFromText
-    [ "us-e1.evm-testnet.chainweb.com:443"
-    ]
+evmTestnetBootstrapHosts = []

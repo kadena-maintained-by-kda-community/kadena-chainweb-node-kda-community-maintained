@@ -1,3 +1,4 @@
+{-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -21,16 +22,18 @@ module Ea.Genesis
 -- , fastTimedCPMN
 , instantCPM0
 , instantCPMN
-, pact53TransitionCPM0
-, pact53TransitionCPMN
 -- , pact5InstantCPM0
 -- , pact5InstantCPMN
-, quirkedPact5InstantCPM0
-, quirkedPact5InstantCPMN
+, quirkedGasInstantCPM0
+, quirkedGasInstantCPMN
 
   -- * Testnet Genesis txs
 , testnet040
 , testnet04N
+
+-- * Testnet06 Genesis txs
+, testnet060
+, testnet06N
 
   -- * Mainnet Genesis txs
 , mainnet0
@@ -63,7 +66,7 @@ module Ea.Genesis
 import Control.Lens
 import Control.Monad
 
-import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Word
 
 import Chainweb.Graph
@@ -72,7 +75,7 @@ import Chainweb.Version
 import Chainweb.Version.Development
 import Chainweb.Version.Mainnet
 import Chainweb.Version.Testnet04
-
+import Chainweb.Version.Testnet06
 
 -- ---------------------------------------------------------------------- --
 -- Genesis Tx Data
@@ -104,7 +107,7 @@ chainIdRangeTag (ChainIdRange l u)
 data Genesis = Genesis
     { _version :: ChainwebVersion
       -- ^ chainweb version (e.g. Testnet04)
-    , _tag :: Text
+    , _tag :: T.Text
       -- ^ Module name tag
     , _txChainIds :: ChainIdRange
       -- ^ chain id
@@ -221,10 +224,10 @@ instantCPMN = instantCPM0
   & txChainIds .~ mkChainIdRange 1 9
   & coinbase ?~ fastNGrants
 
-pact53TransitionCPM0 :: Genesis
-pact53TransitionCPM0 = Genesis
-    { _version = pact53TransitionCpmTestVersion petersenChainGraph
-    , _tag = "Pact53TransitionTimedCPM"
+quirkedGasInstantCPM0 :: Genesis
+quirkedGasInstantCPM0 = Genesis
+    { _version = quirkedGasInstantCpmTestVersion petersenChainGraph
+    , _tag = "QuirkedGasInstantTimedCPM"
     , _txChainIds = onlyChainId 0
     , _coinbase = Just fast0Grants
     , _keysets = Just fastKeysets
@@ -233,25 +236,8 @@ pact53TransitionCPM0 = Genesis
     , _coinContract = [fungibleAssetV1, fungibleXChainV1, fungibleAssetV2, installCoinContractV6, gasPayer]
     }
 
-pact53TransitionCPMN :: Genesis
-pact53TransitionCPMN = pact53TransitionCPM0
-  & txChainIds .~ mkChainIdRange 1 9
-  & coinbase ?~ fastNGrants
-
-quirkedPact5InstantCPM0 :: Genesis
-quirkedPact5InstantCPM0 = Genesis
-    { _version = quirkedGasPact5InstantCpmTestVersion petersenChainGraph
-    , _tag = "QuirkedGasPact5InstantTimedCPM"
-    , _txChainIds = onlyChainId 0
-    , _coinbase = Just fast0Grants
-    , _keysets = Just fastKeysets
-    , _allocations = Just fastAllocations
-    , _namespaces = Just devNs2
-    , _coinContract = [fungibleAssetV1, fungibleXChainV1, fungibleAssetV2, installCoinContractV6, gasPayer]
-    }
-
-quirkedPact5InstantCPMN :: Genesis
-quirkedPact5InstantCPMN = quirkedPact5InstantCPM0
+quirkedGasInstantCPMN :: Genesis
+quirkedGasInstantCPMN = quirkedGasInstantCPM0
   & txChainIds .~ mkChainIdRange 1 9
   & coinbase ?~ fastNGrants
 
@@ -321,6 +307,28 @@ testnetAllocations = "pact/genesis/testnet04/allocations.yaml"
 
 testnetKeysets :: FilePath
 testnetKeysets = "pact/genesis/testnet04/keysets.yaml"
+
+
+-- ---------------------------------------------------------------------- --
+-- Testnet 06
+
+testnet060 :: Genesis
+testnet060 = Genesis
+    { _version = Testnet06
+    , _tag = "Testnet06"
+    , _txChainIds = onlyChainId 0
+    , _coinbase = Just "pact/genesis/testnet06/grants0.yaml"
+    , _keysets = Just "pact/genesis/testnet06/keysets.yaml"
+    , _allocations = Just "pact/genesis/testnet06/allocations.yaml"
+    , _namespaces = Just testNs
+    , _coinContract = [fungibleAssetV1, coinContractV1, gasPayer]
+    }
+
+testnet06N :: Genesis
+testnet06N = testnet060
+    & txChainIds .~ mkChainIdRange 1 19
+    & coinbase ?~ "pact/genesis/testnet06/grantsN.yaml"
+
 
 -- ---------------------------------------------------------------------- --
 -- Mainnet

@@ -41,6 +41,7 @@ import Data.Aeson
 import Data.Aeson.Types
 import Data.Foldable
 import qualified Data.HashMap.Strict as HM
+import qualified Data.Text as T
 
 import Debug.Trace
 
@@ -60,6 +61,7 @@ import Chainweb.ChainValue
 import Chainweb.Parent
 import Chainweb.Test.Orphans.Internal
 import Chainweb.Version
+import Chainweb.Utils
 
 import Chainweb.Storage.Table
 
@@ -151,7 +153,7 @@ arbitraryTestHeaderHeight cid h = do
             <$> HM.insert cid (unwrapParent parent) as
     t <- BlockCreationTime <$> chooseEnum (pt, maxBound)
     return $ TestHeader
-        { _testHeaderHdr = newBlockHeader (Parent <$> as) payloadHash nonce t parent
+        { _testHeaderHdr = newBlockHeader (view (_Parent . blockForkNumber) parent) (Parent <$> as) payloadHash nonce t parent
         , _testHeaderParent = parent
         , _testHeaderAdjs = toList $ Parent <$> as
         }

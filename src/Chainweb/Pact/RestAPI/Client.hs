@@ -32,7 +32,7 @@ module Chainweb.Pact.RestAPI.Client
 
 import qualified Data.Text as T
 
-import Pact.Core.Command.Types
+import Pact.Core.Command.Types hiding (ChainId)
 
 import Servant.Client
 

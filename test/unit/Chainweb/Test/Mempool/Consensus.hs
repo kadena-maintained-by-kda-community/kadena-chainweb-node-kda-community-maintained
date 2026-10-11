@@ -353,7 +353,7 @@ header' h = do
     return
         . fromLog @ChainwebMerkleHashAlgorithm
         . newMerkleLog
-        $ mkFeatureFlags
+        $ newForkState mempty (ParentHeader h) (view blockForkNumber h)
             :+: t'
             :+: view blockHash h
             :+: target

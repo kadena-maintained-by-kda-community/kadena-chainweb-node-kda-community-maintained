@@ -91,6 +91,7 @@ import Chainweb.BlockCreationTime
 import Chainweb.BlockHash
 import Chainweb.BlockHeader
 import Chainweb.BlockHeight
+import Chainweb.ForkState (pact4ForkNumber)
 import Chainweb.ChainId qualified as Chainweb
 import Chainweb.Logger
 import Chainweb.Miner.Pact
@@ -396,7 +397,7 @@ applyCmd logger blockEnv miner gasModel txIdxInBlock spv cmd initialGas mcache0 
     chainweb217Pact' = guardCtx chainweb217Pact bctx
     chainweb219Pact' = guardCtx chainweb219Pact bctx
     chainweb223Pact' = guardCtx chainweb223Pact bctx
-    allVerifiers = verifiersAt cid currHeight
+    allVerifiers = verifiersAt cid pact4ForkNumber currHeight
     toEmptyPactError (PactError errty _ _ _) = PactError errty noInfo [] mempty
 
     toOldListErr pe = pe { peDoc = listErrMsg }

@@ -342,7 +342,8 @@ withPayloadProviderResources logger cid serviceApiConfig peerStuff rdb rewindLim
 
                 -- FIXME move the following to the pact provider initialization
 
-                let maxGasLimit = Pact.GasLimit . Pact.Gas . fromIntegral <$> maxBlockGasLimit maxBound
+                let maxGasLimit = Pact.GasLimit . Pact.Gas . fromIntegral
+                        <$> maxBlockGasLimit maxBound maxBound
                 case maxGasLimit of
                     Just maxGasLimit'
                         | _pactConfigBlockGasLimit conf > maxGasLimit' ->

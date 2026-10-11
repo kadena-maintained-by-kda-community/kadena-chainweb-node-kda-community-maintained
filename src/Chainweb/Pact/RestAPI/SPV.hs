@@ -27,7 +27,7 @@ import GHC.Generics
 
 import Numeric.Natural
 
-import Pact.Core.Command.Types
+import Pact.Core.Command.Types hiding (ChainId)
 import Pact.JSON.Legacy.Value
 
 -- internal modules

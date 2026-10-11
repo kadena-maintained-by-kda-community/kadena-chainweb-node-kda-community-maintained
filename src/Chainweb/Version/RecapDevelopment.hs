@@ -9,10 +9,12 @@ module Chainweb.Version.RecapDevelopment(recapDevnet, pattern RecapDevelopment) 
 
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Set as Set
+import Control.Lens
 
 import Chainweb.BlockCreationTime
 import Chainweb.BlockHeight
 import Chainweb.ChainId
+import Chainweb.Pact.InitialGasModel
 import Chainweb.Difficulty
 import Chainweb.Graph
 import Chainweb.Time
@@ -73,15 +75,14 @@ recapDevnet = withVersion recapDevnet ChainwebVersion
         Chainweb223Pact -> onAllChains ForkAtGenesis
         Chainweb224Pact -> onAllChains ForkAtGenesis
         Chainweb225Pact -> onAllChains ForkAtGenesis
-        Chainweb226Pact -> onAllChains ForkAtGenesis
         Pact5Fork -> onAllChains ForkAtGenesis
         Chainweb228Pact -> onAllChains $ ForkAtBlockHeight $ BlockHeight 10
-        Chainweb229Pact -> onAllChains $ ForkAtBlockHeight $ BlockHeight 20
         Chainweb230Pact -> onAllChains $ ForkAtBlockHeight $ BlockHeight 30
         Chainweb231Pact -> onAllChains $ ForkAtBlockHeight $ BlockHeight 35
         HashedAdjacentRecord -> onAllChains $ ForkAtBlockHeight $ BlockHeight 40
-        Chainweb232Pact -> onAllChains $ ForkAtBlockHeight $ BlockHeight 45
-        MigratePlatformShare -> onAllChains $ ForkAtBlockHeight $ BlockHeight 710
+        Chainweb31 -> onAllChains $ ForkAtBlockHeight $ BlockHeight 710
+        Chainweb32 -> onAllChains ForkAtGenesis
+        MigratePlatformShare -> onAllChains $ ForkAtBlockHeight $ BlockHeight 700
     , _versionUpgrades = foldr (chainZip HM.union) (onAllChains mempty)
         [ indexByForkHeights
             [ (CoinV2, onChains [(unsafeChainId i, pact4Upgrade RecapDevnet.transactions) | i <- [0..9]])
@@ -131,7 +132,12 @@ recapDevnet = withVersion recapDevnet ChainwebVersion
         }
 
     , _versionMaxBlockGasLimit = Bottom (minBound, Just 180_000)
-    , _versionMinimumBlockHeaderHistory = Bottom (minBound, Nothing)
+    , _versionInitialGasModel = onAllChains $
+        (ForkNever, post32GasModel) `Above`
+        (succByHeight $ recapDevnet ^?! versionForks . at Chainweb231Pact . _Just . atChain (unsafeChainId 0), post31GasModel) `Above`
+        Bottom (minBound, pre31GasModel)
+
+    , _versionSpvProofRootValidWindow = Bottom (minBound, Nothing)
     , _versionCheats = VersionCheats
         { _disablePow = False
         , _fakeFirstEpochStart = True
@@ -142,9 +148,11 @@ recapDevnet = withVersion recapDevnet ChainwebVersion
         , _disableMempoolSync = False
         }
     , _versionVerifierPluginNames = onAllChains $
-        (600, Set.fromList $ map VerifierName ["hyperlane_v3_message", "allow", "signed_list"]) `Above`
+        (ForkAtBlockHeight $ BlockHeight 600, Set.fromList $ map VerifierName ["hyperlane_v3_message", "allow", "signed_list"]) `Above`
         Bottom (minBound, mempty)
     , _versionQuirks = noQuirks
     , _versionServiceDate = Nothing
     , _versionPayloadProviderTypes = onAllChains PactProvider
+    , _versionForkNumber = 0
+    , _versionForkVoteCastingLength = 120 * 119 -- 5 days
     }

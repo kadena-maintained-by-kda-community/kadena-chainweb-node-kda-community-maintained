@@ -69,7 +69,7 @@ import Data.Vector (Vector)
 import Data.Vector qualified as Vector
 import Pact.Core.Capabilities
 import Pact.Core.ChainData (TxCreationTime (..))
-import Pact.Core.Command.Types
+import Pact.Core.Command.Types hiding (ChainId)
 import Pact.Core.Gas.Types
 import Pact.Core.Hash qualified as Pact
 import Pact.Core.Names
@@ -485,11 +485,11 @@ modulesWithHigherLevelTransitiveDependenciesSimple baseRdb = withVersion v $ run
         results &
             P.alignExact ? onChain chain0 ?
                 P.alignExact ? Vector.fromList
-                    [ P.fun _crGas ? P.equals (Gas 173)
-                    , P.fun _crGas ? P.equals (Gas 305)
-                    , P.fun _crGas ? P.equals (Gas 348)
-                    , P.fun _crGas ? P.equals (Gas 389)
-                    , P.fun _crGas ? P.equals (Gas 81)
+                    [ P.fun _crGas ? P.equals (Gas 196)
+                    , P.fun _crGas ? P.equals (Gas 328)
+                    , P.fun _crGas ? P.equals (Gas 371)
+                    , P.fun _crGas ? P.equals (Gas 412)
+                    , P.fun _crGas ? P.equals (Gas 103)
                     ]
 
         return ()
@@ -562,11 +562,11 @@ modulesWithHigherLevelTransitiveDependenciesComplex baseRdb = withVersion v $ ru
         results &
             P.alignExact ? onChain chain0 ?
                 P.alignExact ? Vector.fromList
-                    [ P.fun _crGas ? P.equals (Gas 173)
-                    , P.fun _crGas ? P.equals (Gas 715)
-                    , P.fun _crGas ? P.equals (Gas 648)
-                    , P.fun _crGas ? P.equals (Gas 618)
-                    , P.fun _crGas ? P.equals (Gas 82)
+                    [ P.fun _crGas ? P.equals (Gas 196)
+                    , P.fun _crGas ? P.equals (Gas 737)
+                    , P.fun _crGas ? P.equals (Gas 670)
+                    , P.fun _crGas ? P.equals (Gas 641)
+                    , P.fun _crGas ? P.equals (Gas 104)
                     ]
 
         return ()

@@ -46,6 +46,7 @@ module Chainweb.CutDB
 -- * Cut Hashes Table
 , cutHashesTable
 , readHighestCutHeaders
+, readHighestCutHeaders'
 
 -- * CutDb
 , CutDb
@@ -111,7 +112,7 @@ import Chainweb.TreeDB
 import Chainweb.Utils hiding (Codec, check)
 import Chainweb.Utils.Serialization
 import Chainweb.Version
-import Chainweb.Version.Mainnet
+import Chainweb.Version.Mainnet (mainnet)
 import Chainweb.Version.Utils
 import Chainweb.WebBlockHeaderDB
 import Control.Applicative
@@ -181,7 +182,7 @@ makeLenses ''CutDbParams
 defaultCutDbParams :: HasVersion => Int -> CutDbParams
 defaultCutDbParams ft = CutDbParams
     { _cutDbParamsInitialCutFile = Nothing
-    , _cutDbParamsBufferSize = (order g ^ (2 :: Int)) * diameter g
+    , _cutDbParamsBufferSize = max 10 $ (order g ^ (2 :: Int)) * diameter g
     , _cutDbParamsLogLevel = Warn
     , _cutDbParamsTelemetryLevel = Warn
     , _cutDbParamsFetchTimeout = ft
@@ -261,7 +262,7 @@ instance Exception CutDbStopped where
 --
 data CutDb l = CutDb
     { _cutDbCut :: !(TVar Cut)
-    , _cutDbQueue :: !(PQueue (Down CutHashes))
+    , _cutDbQueue :: !(PQueue CutHashes)
     , _cutDbAsync :: !(Async ())
     , _cutDbLogFunction :: !LogFunction
     , _cutDbHeaderStore :: !(WebBlockHeaderStore l)
@@ -307,7 +308,7 @@ cut :: Getter (CutDb l) (IO Cut)
 cut = to _cut
 
 addCutHashes :: CutDb l -> CutHashes -> IO ()
-addCutHashes db = pQueueInsertLimit (_cutDbQueue db) (_cutDbQueueSize db) . Down
+addCutHashes db = pQueueInsert (_cutDbQueue db)
 
 -- | An 'STM' version of '_cut'.
 --
@@ -440,8 +441,10 @@ startCutDb config logger headerStore providers cutHashesStore = mask_ $ do
         c <- readTVarIO cutVar
         logg Info $ T.unlines $
             "got initial cut:" : ["    " <> block | block <- cutToTextShort c]
-        queue <- newEmptyPQueue
+        queue <- newEmptyPQueue _cutHashesWeight _cutHashesId
+            (Just $ _cutDbParamsBufferSize config)
         cutAsync <- asyncWithUnmask $ \u -> u $ processor queue cutVar cutPruningStateVar
+        logg Debug "CutDB started"
         return $ Right CutDb
             { _cutDbCut = cutVar
             , _cutDbQueue = queue
@@ -460,7 +463,7 @@ startCutDb config logger headerStore providers cutHashesStore = mask_ $ do
     logg = logFunctionText logger
     wbhdb = _webBlockHeaderStoreCas headerStore
 
-    processor :: PQueue (Down CutHashes) -> TVar Cut -> TVar CutPruningState -> IO ()
+    processor :: PQueue CutHashes -> TVar Cut -> TVar CutPruningState -> IO ()
     processor queue cutVar cutPruningStateVar = runForever (logFunction logger) "CutDB" $
         processCuts config logger headerStore providers cutHashesStore queue cutVar cutPruningStateVar
 
@@ -576,6 +579,15 @@ readHighestCutHeaders logg wbhdb cutHashesStore = withTableIterator (unCasify cu
             Left e -> throwM e
             Right hm -> return hm
 
+readHighestCutHeaders'
+    :: ChainwebVersion
+    -> LogFunctionText
+    -> WebBlockHeaderDb
+    -> Casify RocksDbTable CutHashes
+    -> IO (HM.HashMap ChainId BlockHeader)
+readHighestCutHeaders' v logg wbhdb cutHashesStore =
+    withVersion v $ readHighestCutHeaders logg wbhdb cutHashesStore
+
 fastForwardCutDb :: HasVersion => CutDb l -> IO ()
 fastForwardCutDb cutDb = do
     highestCutHeaders <-
@@ -629,14 +641,13 @@ processCuts
     -> WebBlockHeaderStore l
     -> ChainMap ConfiguredPayloadProvider
     -> Casify RocksDbTable CutHashes
-    -> PQueue (Down CutHashes)
+    -> PQueue CutHashes
     -> TVar Cut
     -> TVar CutPruningState
     -> IO ()
 processCuts conf logger headerStore providers cutHashesStore queue cutVar cutPruningStateVar =
     flip onException writeLatestCutOnExit $ do
         pQueueToStream queue
-            & S.map getDown
             & S.chain (\c -> cutIdLogFunctionText c logger Debug "start processing")
             & S.filterM (fmap not . isVeryOld)
             & S.filterM (fmap not . farAhead)
@@ -976,7 +987,7 @@ cutHashesToBlockHeaderMap conf logfun headerStore providers hs =
             return $ Left $! HM.fromList missing
 
     origin = _cutOrigin hs
-    priority = Priority (- int (_cutHashesHeight hs))
+    priority = Priority (int (_cutHashesHeight hs))
 
     -- tryGetBlockHeader hdrs localPayload cv@(cid, _) =
     --     (Right <$> mapM

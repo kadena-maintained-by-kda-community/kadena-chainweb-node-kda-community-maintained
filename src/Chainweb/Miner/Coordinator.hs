@@ -62,6 +62,7 @@ import Chainweb.Cut
 import Chainweb.Cut.Create
 import Chainweb.Cut.CutHashes
 import Chainweb.CutDB
+import Chainweb.ForkState(ForkNumber(..))
 import Chainweb.Logger (Logger, logFunction)
 import Chainweb.Logging.Miner
 import Chainweb.Miner.Config
@@ -288,12 +289,13 @@ updateForCut hdb ms c = do
 updateForSolved
     :: HasVersion
     => LogFunction
+    -> ForkNumber
     -> CutDb l
     -> PayloadCache
     -> TVar (Maybe ParentState)
     -> SolvedWork
     -> IO ()
-updateForSolved lf cdb payloadCache var sw = do
+updateForSolved lf targetFork cdb payloadCache var sw = do
     stateOrErr <- runExceptT $ do
         solvedParentState <- mapExceptT atomically $ do
             lift (readTVar var) >>= \case
@@ -319,7 +321,7 @@ updateForSolved lf cdb payloadCache var sw = do
                 let pld = _newPayloadEncodedPayloadData payload
                 let pwo = _newPayloadEncodedPayloadOutputs payload
 
-                try (extend c pld pwo (parentStateParents solvedParentState) sw) >>= \case
+                try (extend targetFork c pld pwo (parentStateParents solvedParentState) sw) >>= \case
 
                     -- Publish CutHashes to CutDb and log success
                     Right (bh, Just ch) -> do
@@ -372,6 +374,7 @@ data MiningCoordination logger = MiningCoordination
     , _coordParentState :: !(ChainMap (TVar (Maybe ParentState)))
     , _coordConf :: !CoordinationConfig
     , _coordPayloadCache :: !PayloadCaches
+    , _coordTargetFork :: !ForkNumber
     }
 
 newMiningCoordination
@@ -390,6 +393,10 @@ newMiningCoordination logger conf cdb = do
         , _coordParentState = state
         , _coordConf = conf
         , _coordPayloadCache = caches
+        , _coordTargetFork =
+            if _coordinationTargetForkOverride conf
+            then pred $ max 1 (_versionForkNumber implicitVersion)
+            else _versionForkNumber implicitVersion
         }
 
 -- | Listen on the cut stream and payloads stream and update the mining state
@@ -533,11 +540,12 @@ awaitEvent cdb caches c p =
 randomWork
     :: HasVersion
     => LogFunction
+    -> ForkNumber
     -> CutDb l
     -> PayloadCaches
     -> ChainMap (TVar (Maybe ParentState))
     -> IO MiningWork
-randomWork logFun cdb caches parentStateVars = do
+randomWork logFun targetFork cdb caches parentStateVars = do
 
     -- Pick a random chain.
     --
@@ -619,7 +627,7 @@ randomWork logFun cdb caches parentStateVars = do
         case w of
             Right (ps, npld) -> do
                 ct <- BlockCreationTime <$> getCurrentTimeIntegral
-                return $ newWork ct ps (_newPayloadBlockPayloadHash npld)
+                return $ newWork targetFork ct ps (_newPayloadBlockPayloadHash npld)
             Left e -> error $
                 "Chainweb.Miner.Coordinator.randomWork: " <> T.unpack e
                 -- FIXME: throw a proper exception and log what is going on
@@ -630,7 +638,7 @@ randomWork logFun cdb caches parentStateVars = do
             Just (parents, payload) -> do
                 ct <- BlockCreationTime <$> getCurrentTimeIntegral
                 logFun @T.Text Debug $ "randomWork: picked chain " <> brief cid
-                return $ newWork ct parents (_newPayloadBlockPayloadHash payload)
+                return $ newWork targetFork ct parents (_newPayloadBlockPayloadHash payload)
             Nothing -> do
                 logFun @T.Text Debug $ "randomWork: not ready for " <> brief cid
                 go t
@@ -682,7 +690,7 @@ work
     => HasVersion
     => MiningCoordination l
     -> IO MiningWork
-work mr = randomWork lf (_coordCutDb mr) (_coordPayloadCache mr) (_coordParentState mr)
+work mr = randomWork lf (_coordTargetFork mr) (_coordCutDb mr) (_coordPayloadCache mr) (_coordParentState mr)
   where
     lf :: LogFunction
     lf = logFunction $ _coordLogger mr
@@ -735,6 +743,7 @@ solve
 solve mr solved =
     updateForSolved
         lf
+        (_coordTargetFork mr)
         (_coordCutDb mr)
         (_coordPayloadCache mr ^?! atChain cid)
         (_coordParentState mr ^?! atChain cid)

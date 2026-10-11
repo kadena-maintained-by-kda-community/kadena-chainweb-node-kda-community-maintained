@@ -53,7 +53,7 @@ import GHC.Generics
 import GHC.Stack
 
 import Chainweb.BlockHash
-import Pact.Core.Command.Types
+import Pact.Core.Command.Types hiding (ChainId)
 import qualified Pact.Core.Persistence as Pact
 import qualified Pact.Core.Builtin as Pact
 import qualified Pact.Core.Evaluate as Pact

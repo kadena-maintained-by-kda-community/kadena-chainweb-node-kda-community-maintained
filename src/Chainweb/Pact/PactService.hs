@@ -111,11 +111,14 @@ import GHC.Stack (HasCallStack)
 import Network.HTTP.Client qualified as HTTP
 import P2P.TaskQueue (Priority(..))
 import Pact.Core.ChainData qualified as Pact
+import Pact.Core.Command.RPC qualified as Pact
 import Pact.Core.Command.Types qualified as Pact
 import Pact.Core.Errors qualified as Pact
 import Pact.Core.Evaluate qualified as Pact
 import Pact.Core.Gas qualified as Pact
 import Pact.Core.Hash qualified as Pact
+import Pact.Core.Info qualified as Pact
+import Pact.Core.Persistence qualified as Pact
 import Pact.Core.StableEncoding qualified as Pact
 import Pact.JSON.Encode qualified as J
 import Prelude hiding (lookup)
@@ -279,6 +282,7 @@ runGenesisIfNeeded logger serviceEnv = do
 --
 execNewGenesisBlock
     :: (Logger logger, CanReadablePayloadCas tbl)
+    => HasCallStack
     => HasVersion
     => logger
     -> ServiceEnv tbl
@@ -424,7 +428,12 @@ execLocal logger serviceEnv cwtx preflight sigVerify rdepth = do
                             case (Pact.assertPreflightMetadata serviceEnv (view Pact.payloadObj <$> cwtx) blockCtx sigVerify) of
                                 Left err -> earlyReturn $ MetadataValidationFailure err
                                 Right () -> return ()
-                            let initialGas = Pact.initialGasOf $ Pact._cmdPayload cwtx
+                            let initialGas = Pact.initialGasOf
+                                    implicitVersion
+                                    (_bctxChainId blockCtx)
+                                    (_bctxCurrentBlockHeight blockCtx)
+                                    (_bctxParentForkNumber blockCtx)
+                                    cwtx
                             applyCmdResult <- liftIO $ flip evalStateT blockHandle $ doChainwebPactDbTransaction (blockEnv ^. psBlockDbEnv) Nothing (\dbEnv spvSupport ->
                                 Pact.applyCmd
                                     logger gasLogger dbEnv noMiner
@@ -894,12 +903,25 @@ execPreInsertCheckReq logger serviceEnv txs = do
             -- Note: `mempty` is fine here for the milligas limit. `buyGas` sets its own limit
             -- by necessity
             gasEnv <- Pact.mkTableGasEnv (Pact.MilliGasLimit mempty) Pact.GasLogsDisabled
-            Pact.buyGas logger' gasEnv pactDb noMiner bctx (view Pact.payloadObj <$> tx)
-        case result of
-            Left err -> do
-                -- note that this is not on-chain
-                throwError $ InsertErrorBuyGas $ Pact._boundedText $ Pact._peMsg $
+            Pact.buyGas logger' gasEnv pactDb noMiner bctx (view Pact.payloadObj <$> tx) >>= \case
+                Left err -> pure $ Left $ InsertErrorBuyGas $ Pact._boundedText $ Pact._peMsg $
                     txInvalidErrorToOnChainPactError (BuyGasError err)
+                Right evalResult -> do
+                    let continuation = tx ^?
+                            Pact.cmdPayload . Pact.payloadObj . Pact.pPayload . Pact._Continuation
+                    isComplete <- case continuation of
+                        Nothing -> pure False
+                        Just contMsg -> do
+                            let pactId = Pact._cmPactId contMsg
+                            defPactState <- Pact.ignoreGas (Pact.LineInfo 0) $
+                                Pact._pdbRead pactDb Pact.DDefPacts pactId
+                            pure $ defPactState == Just Nothing
+                    pure $ case (continuation, isComplete) of
+                        (Just contMsg, True) -> Left $
+                            InsertErrorDefPactComplete (sshow $ Pact._cmPactId contMsg)
+                        _ -> Right evalResult
+        case result of
+            Left err -> throwError err
             Right (_ :: Pact.EvalResult) -> return ()
 
 execLookupPactTxs

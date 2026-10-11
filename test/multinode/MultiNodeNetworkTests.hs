@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- |
@@ -13,6 +14,7 @@
 module Main ( main ) where
 
 import Chainweb.Graph
+import Chainweb.Difficulty (BlockDelay(..))
 import Chainweb.Storage.Table.RocksDB
 import Chainweb.Test.TestVersions
 import Chainweb.Test.Utils
@@ -21,7 +23,7 @@ import System.LogLevel
 import Test.Tasty
 import Test.Tasty.HUnit
 import qualified Chainweb.Test.MultiNode
-import Chainweb.Version (withVersion)
+import Chainweb.Version (withVersion, _versionBlockDelay)
 
 main :: IO ()
 main = defaultMain suite
@@ -35,12 +37,14 @@ suite = independentSequentialTestGroup "MultiNodeNetworkTests"
     [ testCaseSteps "ConsensusNetwork - TimedConsensus - 10 nodes - 30 seconds" $ \step ->
         withTempRocksDb "multinode-tests-timedconsensus-petersen-twenty-rocks" $ \rdb ->
         withSystemTempDirectory "multinode-tests-timedconsensus-petersen-twenty-pact" $ \pactDbDir ->
-        withVersion (timedConsensusVersion petersenChainGraph twentyChainGraph) $
+        withVersion ((timedConsensusVersion 0 petersenChainGraph twentyChainGraph)
+            { _versionBlockDelay = BlockDelay 5_000_000 }) $
             Chainweb.Test.MultiNode.test loglevel 10 30 rdb pactDbDir step
     , testCaseSteps "ConsensusNetwork - TimedConsensus - 10 nodes - 30 seconds - d4k4 upgrade" $ \step ->
         withTempRocksDb "multinode-tests-timedconsensus-twenty-d4k4-rocks" $ \rdb ->
         withSystemTempDirectory "multinode-tests-timedconsensus-twenty-d4k4-pact" $ \pactDbDir ->
-        withVersion (timedConsensusVersion twentyChainGraph d4k4ChainGraph) $
+        withVersion ((timedConsensusVersion 0 twentyChainGraph d4k4ChainGraph)
+            { _versionBlockDelay = BlockDelay 5_000_000 }) $
             Chainweb.Test.MultiNode.test loglevel 4 100 rdb pactDbDir step
     , testCaseSteps "ConsensusNetwork - InstantTimedCPM singleChainGraph - 10 nodes - 30 seconds" $ \step ->
         withTempRocksDb "multinode-tests-instantcpm-single-rocks" $ \rdb ->

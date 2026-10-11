@@ -1,7 +1,7 @@
 cabal-version: 3.8
 
 name:         cwtools
-version:      3.0.1
+version:      3.1
 synopsis:     A collection of various tools for Chainweb users and developers.
 description:  A collection of various tools for Chainweb users and developers.
 homepage:     https://github.com/kadena-io/chainweb
@@ -17,7 +17,6 @@ build-type:   Simple
 tested-with:
     GHC == 9.10
     GHC == 9.8
-    GHC == 9.6
 
 extra-source-files:
    README.md
@@ -109,24 +108,6 @@ executable standalone-pruner
         , text
         , time
 
-executable calculate-release
-    import: warning-flags, debugging-flags
-    default-language: Haskell2010
-    ghc-options:
-        -threaded
-    hs-source-dirs: calculate-release
-    main-is: Main.hs
-    build-depends:
-        -- internal
-        , chainweb
-
-        -- external
-        , base >= 4.12 && < 5
-        , lens
-        , lens-aeson
-        , time
-        , wreq
-
 -- Compact pact state and RocksDB.
 executable compact
     import: warning-flags, debugging-flags
@@ -164,10 +145,10 @@ executable db-checksum
         , cereal >= 0.5
         , configuration-tools
         , containers
-        , crypton
+        , crypton >= 1.1.2
         , direct-sqlite
         , directory
-        , memory
+        , ram >=0.2.2
         , mtl
         , pact-tng
         , safe-exceptions

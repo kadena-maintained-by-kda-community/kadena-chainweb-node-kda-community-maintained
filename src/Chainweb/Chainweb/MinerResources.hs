@@ -64,11 +64,8 @@ withMiningCoordination logger conf cdb inner
     | not (_coordinationEnabled coordConf) = inner Nothing
     | otherwise = do
         coord <- newMiningCoordination logger coordConf cdb
-        snd <$> concurrently
-            -- maintain mining state
-            (runCoordination coord)
-            -- run inner computation
-            (inner (Just coord))
+        withAsync (runCoordination coord) $ \_ ->
+            inner (Just coord)
   where
     -- providers = view cutDbPayloadProviders cdb
     coordConf = _miningCoordination conf

@@ -15,6 +15,7 @@ import qualified Data.Set as Set
 import Chainweb.BlockCreationTime
 import Chainweb.ChainId
 import Chainweb.Difficulty
+import Chainweb.Pact.InitialGasModel
 import Chainweb.Graph
 import Chainweb.Time
 import Chainweb.Utils
@@ -56,6 +57,10 @@ evmTestnet = withVersion evmTestnet $ ChainwebVersion
     , _versionName = ChainwebVersionName "evm-testnet"
     , _versionForks = tabulateHashMap $ const $ onAllChains ForkAtGenesis
     , _versionUpgrades = onAllChains mempty
+    , _versionForkNumber = 1
+    , _versionForkVoteCastingLength = 20
+    , _versionSpvProofRootValidWindow = Bottom (minBound, Nothing)
+    , _versionInitialGasModel = onAllChains $ Bottom (minBound, post32GasModel) 
     , _versionGraphs = Bottom (minBound, d4k4ChainGraph)
     , _versionBlockDelay = BlockDelay 30_000_000
     , _versionWindow = WindowWidth 120

@@ -251,8 +251,8 @@ createNewCut hdb n t pay i c = do
     extension <- fromMaybeM BadAdjacents $ getCutExtension c i
     wp <- WorkParents (_cutExtensionParent extension)
         <$> getAdjacentParentHeaders hdb extension
-    work <- newMiningWorkPure hdb (BlockCreationTime t) extension pay
-    (solvedHeader, mc') <- extendCut c wp (solveWork work n t)
+    work <- newMiningWorkPure hdb (_versionForkNumber implicitVersion) (BlockCreationTime t) extension pay
+    (solvedHeader, mc') <- extendCut (_versionForkNumber implicitVersion) c wp (solveWork work n t)
         `catch` \(InvalidSolvedHeader msg) -> throwM $ InvalidHeader msg
     c' <- fromMaybeM BadAdjacents mc'
     return $ T2 solvedHeader c'
@@ -600,7 +600,7 @@ prop_joinNoMixedTransitionalCuts baseDb =
             T.assert (not $ cutMixedTransition $ cutToCutHashes Nothing m)
         _ -> error "timedConsensusVersion graphs have changed"
     where
-    v = timedConsensusVersion petersenChainGraph twentyChainGraph
+    v = timedConsensusVersion 0 petersenChainGraph twentyChainGraph
     mine :: HasVersion => WebBlockHeaderDb -> Int -> ChainId -> Cut -> T.PropertyM IO Cut
     mine wdb seed cid c = do
         n' <- T.pick $ Nonce . int . (* seed) <$> T.arbitrary
@@ -657,7 +657,7 @@ prop_extendNoMixedTransitionalCuts baseDb =
                     (\acid () -> Parent $ dangerousCut ^?! ixg acid)
                     (HS.toMap breakoutChainAdjacents)
             (_, ext) <- T.run $
-                extend dangerousCut Nothing Nothing
+                extend (_versionForkNumber implicitVersion) dangerousCut Nothing Nothing
                     WorkParents
                         { _workParent' = Parent $ dangerousCut ^?! ixg breakoutChain
                         , _workAdjacentParents' = adjacentBlocks
@@ -678,7 +678,7 @@ prop_extendNoMixedTransitionalCuts baseDb =
             T.assert (isNothing ext)
         _ -> error "timedConsensusVersion graphs have changed"
     where
-    v = timedConsensusVersion petersenChainGraph twentyChainGraph
+    v = timedConsensusVersion 0 petersenChainGraph twentyChainGraph
     mine :: HasVersion => WebBlockHeaderDb -> Int -> ChainId -> Cut -> T.PropertyM IO (Either MineFailure (T2 BlockHeader Cut))
     mine wdb seed cid c = do
         n' <- T.pick $ Nonce . int . (* seed) <$> T.arbitrary
@@ -795,7 +795,7 @@ prop_blockCountAtChainHeight g0 g1 =
     h i = min 8 (i + 1) * int (order g0) + max 0 (i - 7) * int (order g1)
 
     -- (8, g1) :| [(0, g0)]
-    v = timedConsensusVersion g0 g1
+    v = timedConsensusVersion 0 g0 g1
 
 properties_misc :: [(String, T.Property)]
 properties_misc =

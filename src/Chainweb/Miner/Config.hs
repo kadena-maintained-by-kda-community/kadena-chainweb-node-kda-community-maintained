@@ -27,6 +27,10 @@ module Chainweb.Miner.Config
 , CoordinationConfig(..)
 , pCoordinationConfig
 , coordinationEnabled
+-- , coordinationMiners
+-- , coordinationUpdateStreamLimit
+, coordinationUpdateStreamTimeout
+, coordinationTargetForkOverride
 , NodeMiningConfig(..)
 , defaultNodeMining
 , nodeMiningEnabled
@@ -140,6 +144,8 @@ data CoordinationConfig = CoordinationConfig
       -- present on the node.
     , _coordinationUpdateStreamTimeout :: !Seconds
         -- ^ the duration that an update stream is kept open in seconds
+    , _coordinationTargetForkOverride :: !Bool
+        -- ^ whether to hold back voting on the next fork number increment
     } deriving stock (Eq, Show, Generic)
 
 coordinationEnabled :: Lens' CoordinationConfig Bool
@@ -149,21 +155,28 @@ coordinationUpdateStreamTimeout :: Lens' CoordinationConfig Seconds
 coordinationUpdateStreamTimeout =
     lens _coordinationUpdateStreamTimeout (\m c -> m { _coordinationUpdateStreamTimeout = c })
 
+coordinationTargetForkOverride :: Lens' CoordinationConfig Bool
+coordinationTargetForkOverride =
+    lens _coordinationTargetForkOverride (\m c -> m { _coordinationTargetForkOverride = c })
+
 instance ToJSON CoordinationConfig where
     toJSON o = object
         [ "enabled" .= _coordinationEnabled o
         , "updateStreamTimeout" .= _coordinationUpdateStreamTimeout o
+        , "targetForkOverride" .= _coordinationTargetForkOverride o
         ]
 
 instance FromJSON (CoordinationConfig -> CoordinationConfig) where
     parseJSON = withObject "CoordinationConfig" $ \o -> id
         <$< coordinationEnabled ..: "enabled" % o
         <*< coordinationUpdateStreamTimeout ..: "updateStreamTimeout" % o
+        <*< coordinationTargetForkOverride ..: "targetForkOverride" % o
 
 defaultCoordination :: CoordinationConfig
 defaultCoordination = CoordinationConfig
     { _coordinationEnabled = False
     , _coordinationUpdateStreamTimeout = 240
+    , _coordinationTargetForkOverride = False
     }
 
 pCoordinationConfig :: MParser CoordinationConfig
@@ -174,6 +187,19 @@ pCoordinationConfig = id
     <*< coordinationUpdateStreamTimeout .:: jsonOption
         % long "mining-update-stream-timeout"
         <> help "duration that an update stream is kept open in seconds"
+    <*< coordinationTargetForkOverride .:: flag' True
+        % long "mining-target-fork-override"
+        <> help "do not vote for the next fork number increment"
+
+-- pMiner :: String -> MParser Miner
+-- pMiner prefix = pkToMiner <$> pPk
+--   where
+--     pkToMiner pk = Miner
+--         (MinerId $ "k:" <> _pubKey pk)
+--         (MinerKeys $ mkKeySet [pk] "keys-all")
+--     pPk = strOption
+--         % long (prefix <> "mining-public-key")
+--         <> help "public key of a miner in hex decimal encoding. The account name is the public key prefix by 'k:'. (This option can be provided multiple times.)"
 
 -- -------------------------------------------------------------------------- --
 -- Node Mining Config

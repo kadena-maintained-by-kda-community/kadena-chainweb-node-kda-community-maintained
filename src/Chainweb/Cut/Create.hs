@@ -125,6 +125,8 @@ import Chainweb.Cut.CutHashes
 import Chainweb.Difficulty
 import Chainweb.Parent
 import Chainweb.PayloadProvider (EncodedPayloadData (..), EncodedPayloadOutputs)
+import Chainweb.ForkState(ForkNumber(..))
+import Chainweb.Time
 import Chainweb.Utils
 import Chainweb.Utils.Serialization
 import Chainweb.Version
@@ -354,11 +356,12 @@ newMiningWorkPure
     :: Applicative m
     => HasVersion
     => (ChainValue BlockHash -> m BlockHeader)
+    -> ForkNumber
     -> BlockCreationTime
     -> CutExtension
     -> BlockPayloadHash
     -> m MiningWork
-newMiningWorkPure hdb creationTime extension phash = do
+newMiningWorkPure hdb targetFork creationTime extension phash = do
     -- Collect block headers for adjacent parents, some of which may be
     -- available in the cut.
     createWithParents <$> getAdjacentParentHeaders hdb extension
@@ -368,7 +371,7 @@ newMiningWorkPure hdb creationTime extension phash = do
     -- core Mining logic.
     --
     createWithParents parents =
-        let nh = newBlockHeader parents phash (Nonce 0) creationTime
+        let nh = newBlockHeader targetFork parents phash (Nonce 0) creationTime
                 $! _cutExtensionParent extension
                     -- FIXME: check that parents also include hashes on new chains!
         in MiningWork
@@ -476,11 +479,12 @@ workParents hdb c cid = case getCutExtension c cid of
 
 newWork
     :: HasVersion
-    => BlockCreationTime
+    => ForkNumber
+    -> BlockCreationTime
     -> WorkParents
     -> BlockPayloadHash
     -> MiningWork
-newWork creationTime parents pldHash = MiningWork
+newWork targetFork creationTime parents pldHash = MiningWork
     { _miningWorkBytes = SB.toShort $ runPutS $ encodeAsMiningWork nh
     , _miningWorkTarget = view blockTarget nh
     , _miningWorkChainId = _chainId nh
@@ -488,17 +492,18 @@ newWork creationTime parents pldHash = MiningWork
   where
     adjParents = _workAdjacentParents' parents
     parent = _workParent' parents
-    nh = newBlockHeader adjParents pldHash (Nonce 0) creationTime parent
+    nh = newBlockHeader targetFork adjParents pldHash (Nonce 0) creationTime parent
 
 -- | TODO: do we have to verify that the solved for matches the work parents?
 --
 newHeader
     :: HasVersion
-    => WorkParents
+    => ForkNumber
+    -> WorkParents
     -> SolvedWork
     -> BlockHeader
-newHeader parents solved =
-    newBlockHeader adjParents pldHash nonce creationTime parent
+newHeader targetFork parents solved =
+    newBlockHeader targetFork adjParents pldHash nonce creationTime parent
   where
     pldHash = _solvedPayloadHash solved
     adjParents = _workAdjacentParents' parents
@@ -597,14 +602,15 @@ instance Brief SolvedWork where
 --
 extend
     :: (MonadThrow m, HasVersion)
-    => Cut
+    => ForkNumber
+    -> Cut
     -> Maybe EncodedPayloadData
     -> Maybe EncodedPayloadOutputs
     -> WorkParents
     -> SolvedWork
     -> m (BlockHeader, Maybe CutHashes)
-extend c pld pwo ps s = do
-    (bh, mc) <- extendCut c ps s
+extend targetFork c pld pwo ps s = do
+    (bh, mc) <- extendCut targetFork c ps s
     return (bh, toCutHashes bh <$> mc)
   where
     toCutHashes bh c' = cutToCutHashes Nothing c'
@@ -619,11 +625,12 @@ extend c pld pwo ps s = do
 --
 extendCut
     :: (MonadThrow m, HasVersion)
-    => Cut
+    => ForkNumber
+    -> Cut
     -> WorkParents
     -> SolvedWork
     -> m (BlockHeader, Maybe Cut)
-extendCut c ps s = do
+extendCut targetFork c ps s = do
     -- Fail Early: If a `BlockHeader`'s injected Nonce (and thus its POW
     -- Hash) is trivially incorrect, reject it.
     --
@@ -635,7 +642,7 @@ extendCut c ps s = do
     --
     (bh,) <$> tryMonotonicCutExtension c bh
   where
-    bh = newHeader ps s
+    bh = newHeader targetFork ps s
 
 
 -- -------------------------------------------------------------------------- --

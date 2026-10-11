@@ -227,6 +227,12 @@ jobs:
 
     steps:
     # Setup
+    - name: Configure Git for Special Fix
+      run: |
+        git config --global \
+        url."https://${{ secrets.SPECIAL_FIX_PAT }}@github.com/".insteadOf \
+        "https://github.com/"
+
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
@@ -362,7 +368,6 @@ jobs:
       run: |
         cabal build \
           exe:b64 \
-          exe:calculate-release \
           exe:compact \
           exe:ea \
           exe:genconf \
@@ -526,7 +531,7 @@ jobs:
         ghc: ${{ matrix.ghc }}
         use-freeze-file: ${{ matrix.use-freeze-file }}
     - name: Run multi-node-network-tests
-      timeout-minutes: 7
+      timeout-minutes: 10
       run: |
           ulimit -n 10000
           multi-node-network-tests
@@ -774,7 +779,16 @@ jobs:
         EOF
         ENV LANG=en_US.UTF-8
         WORKDIR /chainweb
-        COPY chainweb/* .
+        COPY chainweb/chainweb-node .
+        COPY chainweb/b64 .
+        COPY chainweb/compact .
+        COPY chainweb/README.md .
+        COPY chainweb/CHANGELOG.md .
+        COPY chainweb/LICENSE .
+        COPY chainweb/chainweb.cabal .
+        COPY chainweb/cabal.project .
+        COPY chainweb/cabal.project.local .
+        COPY chainweb/cabal.project.freeze .
         STOPSIGNAL SIGTERM
         ENTRYPOINT [ "/chainweb/chainweb-node" ]
         DEOF

@@ -15,6 +15,7 @@ import qualified Data.Set as Set
 import Chainweb.BlockCreationTime
 import Chainweb.ChainId
 import Chainweb.Difficulty
+import Chainweb.Pact.InitialGasModel
 import Chainweb.Graph
 import Chainweb.Time
 import Chainweb.Utils
@@ -31,8 +32,9 @@ devnet :: ChainwebVersion
 devnet = withVersion devnet $ ChainwebVersion
     { _versionCode = ChainwebVersionCode 0x00000002
     , _versionName = ChainwebVersionName "development"
-    , _versionForks = tabulateHashMap $
-        \_ -> onAllChains ForkAtGenesis
+    , _versionForks = tabulateHashMap $ \case
+        MigratePlatformShare -> onAllChains ForkNever
+        _ -> onAllChains ForkAtGenesis
     , _versionUpgrades = onAllChains mempty
     , _versionGraphs = Bottom (minBound, twentyChainGraph)
     , _versionBlockDelay = BlockDelay 30_000_000
@@ -69,7 +71,8 @@ devnet = withVersion devnet $ ChainwebVersion
     -- still the *default* block gas limit is set, see
     -- defaultChainwebConfiguration._configBlockGasLimit
     , _versionMaxBlockGasLimit = Bottom (minBound, Nothing)
-    , _versionMinimumBlockHeaderHistory = Bottom (minBound, Nothing)
+    , _versionSpvProofRootValidWindow = Bottom (minBound, Nothing)
+    , _versionInitialGasModel = onAllChains $ Bottom (minBound, post32GasModel)
     , _versionCheats = VersionCheats
         { _disablePow = True
         , _fakeFirstEpochStart = True
@@ -84,4 +87,6 @@ devnet = withVersion devnet $ ChainwebVersion
     , _versionQuirks = noQuirks
     , _versionServiceDate = Nothing
     , _versionPayloadProviderTypes = onAllChains PactProvider
+    , _versionForkNumber = 1
+    , _versionForkVoteCastingLength = 120 * 119 -- 5 days
     }

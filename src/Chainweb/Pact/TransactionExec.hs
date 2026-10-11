@@ -84,6 +84,7 @@ import Pact.Core.Hash
 import Pact.Core.Info
 import Pact.Core.Names
 import Pact.Core.Namespace
+import Pact.Core.Scheme (defPPKScheme)
 import Pact.Core.PactValue
 import Pact.Core.Persistence.Types hiding (GasM(..))
 import Pact.Core.Persistence.Utils (ignoreGas)
@@ -105,8 +106,10 @@ import qualified Pact.Core.Evaluate as Pact
 import Chainweb.BlockCreationTime
 import Chainweb.BlockHash
 import Chainweb.BlockHeight
+import Chainweb.ForkState
 import Chainweb.Logger
 import Chainweb.Miner.Pact
+import Chainweb.Pact.InitialGasModel
 import Chainweb.Pact.Types
 import Chainweb.Pact.Templates
 import Chainweb.Parent
@@ -168,6 +171,7 @@ chargeGas info gasArgs = do
   either throwError return =<<
     liftIO (chargeGasArgsM gasEnv info [] gasArgs)
 
+
 -- run verifiers
 -- nasty... perhaps later convert verifier plugins to use GasM instead of tracking "gas remaining"
 -- TODO: Verifiers are also tied to Pact enough that this is going to be an annoying migration
@@ -178,7 +182,7 @@ runVerifiers txCtx cmd = do
       gasUsed <- liftIO . readIORef . _geGasRef . _txEnvGasEnv =<< ask
       let initGasRemaining = MilliGas $ case (gasToMilliGas (gasLimit ^. _GasLimit), gasUsed) of
             (MilliGas gasLimitMilliGasWord, MilliGas gasUsedMilliGasWord) -> gasLimitMilliGasWord - gasUsedMilliGasWord
-      let allVerifiers = verifiersAt (_chainId txCtx) (_bctxCurrentBlockHeight txCtx)
+      let allVerifiers = verifiersAt (_chainId txCtx) (_bctxParentForkNumber txCtx) (_bctxCurrentBlockHeight txCtx)
       let txVerifiers = fromMaybe [] $ cmd ^. cmdPayload . pVerifiers
       verifierResult <- liftIO $ runVerifierPlugins
           (_chainId txCtx, _bctxCurrentBlockHeight txCtx) logger
@@ -922,31 +926,25 @@ redeemGas logger db (Miner mid mks) txCtx gasUsed maybeFundTxPactId cmd
 -- -- Utilities
 
 -- | Initial gas charged for transaction size
---   ignoring the size of a continuation proof, if present
---
-initialGasOf :: PayloadWithText meta ParsedCode -> Gas
-initialGasOf payload = Gas gasFee
+initialGasOf :: ChainwebVersion -> V.ChainId -> BlockHeight -> ForkNumber -> Transaction -> Gas
+initialGasOf v cid bh fn tx = Gas $ ceiling $ sizeCost + sizePenaltyCost + sigsCost
   where
-    feePerByte :: Rational = 0.01
+    model = withVersion v $ activeInitialGasModel cid fn bh
+    proofSize = case tx ^. cmdPayload . payloadObj . pPayload of
+                  Continuation (ContMsg _ _ _ _ (Just (ContProof p))) -> B.length p
+                  _ -> 0
 
-    contProofSize =
-      case payload ^. payloadObj . pPayload of
-        Continuation (ContMsg _ _ _ _ (Just (ContProof p))) -> B.length p
-        _ -> 0
-    txSize = SB.length (payload ^. payloadBytes) - contProofSize
+    rawSize = SB.length (tx ^. cmdPayload . payloadBytes) - proofSize
+    sigsSize = sum $ map (B.length . J.encodeStrict) $ tx ^. cmdSigs
 
-    costPerByte = fromIntegral txSize * feePerByte
-    sizePenalty = txSizeAccelerationFee costPerByte
-    gasFee = ceiling (costPerByte + sizePenalty)
-{-# INLINE initialGasOf #-}
+    sizeCost = model ^. feePerByte * ( model ^. rawPayloadSizeFactor * fromIntegral rawSize
+                                     + model ^. proofSizeFactor      * fromIntegral proofSize
+                                     + model ^. signatureSizeFactor  * fromIntegral sigsSize)
+    sizePenaltyCost  = (model ^. sizePenalty) sizeCost
 
-txSizeAccelerationFee :: Rational -> Rational
-txSizeAccelerationFee costPerByte = total
-  where
-    total = (costPerByte / bytePenalty) ^ power
-    bytePenalty = 512
-    power :: Integer = 7
-{-# INLINE txSizeAccelerationFee #-}
+    sigsCost = sum $ map ((model ^. signatureCost) . fromMaybe defPPKScheme . view siScheme)
+                  $ tx ^. cmdPayload . payloadObj . pSigners
+
 
 -- | Chainweb's namespace policy for ordinary transactions.
 -- Doesn't allow installing modules in the root namespace.
@@ -1007,6 +1005,12 @@ flagsFor txCtx = Set.unions
   [ guardDisablePact51Flags txCtx
   , guardDisablePact52And53Flags txCtx
   , guardDisablePact54Flags txCtx
+  , guardDisablePact54FixFlags txCtx
   , Set.singleton FlagDisableRuntimeRTC
   , Set.singleton FlagEnforceKeyFormats
   ]
+
+guardDisablePact54FixFlags :: HasVersion => BlockCtx -> Set ExecutionFlag
+guardDisablePact54FixFlags txCtx
+  | chainweb32 (_chainId txCtx) (_bctxParentForkNumber txCtx) = Set.empty
+  | otherwise = Set.singleton FlagDisablePact54Fix

@@ -61,6 +61,7 @@ import Chainweb.Crypto.MerkleLog
 import Chainweb.Cut.Create
 import Chainweb.Cut.CutHashes
 import Chainweb.Difficulty
+import Chainweb.ForkState
 import Chainweb.Graph
 import Chainweb.HostAddress
 import Chainweb.MerkleLogHash
@@ -94,7 +95,7 @@ import Chainweb.Version.RecapDevelopment
 import Chainweb.Version.Registry
 import Chainweb.Version.Testnet04
 import Chainweb.Version.Utils
-import Control.Lens (view)
+import Control.Lens (set, view)
 import Control.Monad
 import Control.Monad.Catch
 import Data.Aeson hiding (Error)
@@ -120,7 +121,7 @@ import P2P.Node.PeerDB
 import P2P.Peer
 import P2P.Test.Orphans ()
 import Pact.Core.Capabilities
-import Pact.Core.Command.Types
+import Pact.Core.Command.Types hiding (ChainId, NetworkId)
 import Pact.Core.Literal
 import Pact.Core.PactValue
 import Pact.Core.StableEncoding
@@ -158,10 +159,10 @@ instance Arbitrary ChainwebVersion where
     arbitrary = elements
         [ barebonesTestVersion singletonChainGraph
         , barebonesTestVersion petersenChainGraph
-        , timedConsensusVersion singletonChainGraph singletonChainGraph
-        , timedConsensusVersion petersenChainGraph petersenChainGraph
-        , timedConsensusVersion singletonChainGraph pairChainGraph
-        , timedConsensusVersion petersenChainGraph twentyChainGraph
+        , timedConsensusVersion 0 singletonChainGraph singletonChainGraph
+        , timedConsensusVersion 0 petersenChainGraph petersenChainGraph
+        , timedConsensusVersion 0 singletonChainGraph pairChainGraph
+        , timedConsensusVersion 0 petersenChainGraph twentyChainGraph
         , RecapDevelopment
         , Testnet04
         , Mainnet01
@@ -205,7 +206,7 @@ instance Arbitrary P2pConfiguration where
         <$> arbitrary <*> arbitrary <*> arbitrary
         <*> arbitrary <*> arbitrary <*> arbitrary
         <*> arbitrary <*> arbitrary <*> arbitrary
-        <*> arbitrary
+        <*> arbitrary <*> arbitrary
 
 instance Arbitrary PeerEntry where
     arbitrary = PeerEntry
@@ -308,8 +309,14 @@ instance Arbitrary BlockCreationTime where
 instance Arbitrary EpochStartTime where
     arbitrary = EpochStartTime <$> arbitrary
 
-instance Arbitrary FeatureFlags where
-    arbitrary = return mkFeatureFlags
+instance Arbitrary ForkState where
+    arbitrary = do
+        v <- arbitrary
+        votes <- chooseBoundedIntegral (0, int (withVersion v forkEpochLength) * voteStep)
+        number <- chooseBoundedIntegral (0, 100000000)
+        return $ ForkState 0
+            & set forkVotes votes
+            & set forkNumber number
 
 instance HasVersion => Arbitrary BlockHeader where
     arbitrary = arbitraryBlockHeaderVersion
@@ -355,7 +362,8 @@ arbitraryBlockHeaderVersionHeightChain h cid
     | otherwise = discard
   where
     entries t
-        = liftA2 (:+:) arbitrary -- feature flags
+        -- TODO: pick between 0 and the version fork number
+        = liftA2 (:+:) (pure $ ForkState 0) -- feature flags
         $ liftA2 (:+:) (pure $ BlockCreationTime t) -- time
         $ liftA2 (:+:) (Parent <$> arbitrary) -- parent hash
         $ liftA2 (:+:) arbitrary -- target
@@ -806,6 +814,7 @@ instance Arbitrary CoordinationConfig where
     arbitrary = CoordinationConfig
         <$> arbitrary
         <*> arbitrary
+        <*> arbitrary
 
 instance Arbitrary NodeMiningConfig where
     arbitrary = NodeMiningConfig
@@ -822,7 +831,7 @@ instance Arbitrary MiningConfig where
 arbitraryEventPactValue :: Gen PactValue
 arbitraryEventPactValue = oneof
     [ PLiteral . LString <$> arbitrary
-    , PLiteral . LInteger <$> (int256ToInteger <$> arbitrary)
+    , PLiteral . LInteger . int256ToInteger <$> arbitrary
     ]
 
 -- -- | Arbitrary Pact events that are supported in events proofs

@@ -117,7 +117,7 @@ data ChainwebHashTag
     | MinerDataTag
     | CoinbaseOutputTag
     | EpochStartTimeTag
-    | FeatureFlagsTag
+    | ForkStateTag
 
     -- Event Proofs
     | OutputEventsTag
@@ -160,7 +160,7 @@ instance MerkleUniverse ChainwebHashTag where
     type MerkleTagVal ChainwebHashTag 'BlockHeightTag = 0x0003
     type MerkleTagVal ChainwebHashTag 'BlockWeightTag = 0x0004
     type MerkleTagVal ChainwebHashTag 'BlockPayloadHashTag = 0x0005
-    type MerkleTagVal ChainwebHashTag 'FeatureFlagsTag = 0x0006
+    type MerkleTagVal ChainwebHashTag 'ForkStateTag = 0x0006
     type MerkleTagVal ChainwebHashTag 'BlockCreationTimeTag = 0x0007
     type MerkleTagVal ChainwebHashTag 'ChainwebVersionTag = 0x0008
     type MerkleTagVal ChainwebHashTag 'PowHashTag = 0x0009
@@ -280,9 +280,9 @@ data instance Sing :: ChainwebHashTag -> Type where
     SBlockPayloadHashTag
         :: SNat (MerkleTagVal ChainwebHashTag BlockPayloadHashTag)
         -> Sing 'BlockPayloadHashTag
-    SFeatureFlagsTag
-        :: SNat (MerkleTagVal ChainwebHashTag FeatureFlagsTag)
-        -> Sing 'FeatureFlagsTag
+    SForkStateTag
+        :: SNat (MerkleTagVal ChainwebHashTag ForkStateTag)
+        -> Sing 'ForkStateTag
     SBlockCreationTimeTag
         :: SNat (MerkleTagVal ChainwebHashTag BlockCreationTimeTag)
         -> Sing 'BlockCreationTimeTag
@@ -422,7 +422,7 @@ sTagVal (SChainIdTag n) = n
 sTagVal (SBlockHeightTag n) = n
 sTagVal (SBlockWeightTag n) = n
 sTagVal (SBlockPayloadHashTag n) = n
-sTagVal (SFeatureFlagsTag n) = n
+sTagVal (SForkStateTag n) = n
 sTagVal (SBlockCreationTimeTag n) = n
 sTagVal (SChainwebVersionTag n) = n
 sTagVal (SPowHashTag n) = n
@@ -477,7 +477,7 @@ instance SingI 'ChainIdTag where sing = SChainIdTag SNat
 instance SingI 'BlockHeightTag where sing = SBlockHeightTag SNat
 instance SingI 'BlockWeightTag where sing = SBlockWeightTag SNat
 instance SingI 'BlockPayloadHashTag where sing = SBlockPayloadHashTag SNat
-instance SingI 'FeatureFlagsTag where sing = SFeatureFlagsTag SNat
+instance SingI 'ForkStateTag where sing = SForkStateTag SNat
 instance SingI 'BlockCreationTimeTag where sing = SBlockCreationTimeTag SNat
 instance SingI 'ChainwebVersionTag where sing = SChainwebVersionTag SNat
 instance SingI 'PowHashTag where sing = SPowHashTag SNat
@@ -527,7 +527,7 @@ instance SingKind ChainwebHashTag where
     fromSing (SBlockHeightTag SNat) = BlockHeightTag
     fromSing (SBlockWeightTag SNat) = BlockWeightTag
     fromSing (SBlockPayloadHashTag SNat) = BlockPayloadHashTag
-    fromSing (SFeatureFlagsTag SNat) = FeatureFlagsTag
+    fromSing (SForkStateTag SNat) = ForkStateTag
     fromSing (SBlockCreationTimeTag SNat) = BlockCreationTimeTag
     fromSing (SChainwebVersionTag SNat) = ChainwebVersionTag
     fromSing (SPowHashTag SNat) = PowHashTag
@@ -575,7 +575,7 @@ instance SingKind ChainwebHashTag where
     toSing BlockHeightTag = SomeSing (SBlockHeightTag SNat)
     toSing BlockWeightTag = SomeSing (SBlockWeightTag SNat)
     toSing BlockPayloadHashTag = SomeSing (SBlockPayloadHashTag SNat)
-    toSing FeatureFlagsTag = SomeSing (SFeatureFlagsTag SNat)
+    toSing ForkStateTag = SomeSing (SForkStateTag SNat)
     toSing BlockCreationTimeTag = SomeSing (SBlockCreationTimeTag SNat)
     toSing ChainwebVersionTag = SomeSing (SChainwebVersionTag SNat)
     toSing PowHashTag = SomeSing (SPowHashTag SNat)

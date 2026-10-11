@@ -468,7 +468,7 @@ header p = do
     return
         . fromLog @ChainwebMerkleHashAlgorithm
         . newMerkleLog
-        $ mkFeatureFlags
+        $ newForkState mempty (Parent p) (view blockForkNumber p)
             :+: t'
             :+: Parent (view blockHash p)
             :+: target
@@ -488,7 +488,7 @@ header p = do
 -- | get arbitrary value for seed.
 -- > getArbitrary @BlockHash 0
 getArbitrary :: Arbitrary a => Int -> a
-getArbitrary seed = unGen arbitrary (mkQCGen 0) seed
+getArbitrary = unGen arbitrary (mkQCGen 0)
 
 -- -------------------------------------------------------------------------- --
 -- Test Chain Database Configurations
@@ -1112,8 +1112,8 @@ bootstrapConfig conf = conf
         & set peerConfigHost host
 
 setBootstrapPeerInfo :: PeerInfo -> ChainwebConfiguration -> ChainwebConfiguration
-setBootstrapPeerInfo =
-    over (configP2p . p2pConfigKnownPeers) . (:)
+setBootstrapPeerInfo bootPeerInfo =
+    configP2p . p2pConfigKnownPeers .~ [bootPeerInfo]
 
 host :: Hostname
 -- host = unsafeHostnameFromText "::1"

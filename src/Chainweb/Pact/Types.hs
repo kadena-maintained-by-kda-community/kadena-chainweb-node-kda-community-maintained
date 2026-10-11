@@ -167,6 +167,7 @@ import System.LogLevel
 import Chainweb.BlockHeader
 import Chainweb.BlockPayloadHash
 import Chainweb.Counter
+import Chainweb.ForkState (ForkNumber, pact4ForkNumber)
 import Chainweb.Logger
 import Chainweb.Pact.Mempool.Mempool
 import Chainweb.Miner.Pact (Miner, toMinerData, noMiner)
@@ -192,6 +193,11 @@ import Chainweb.BlockHeight
 import Chainweb.BlockHash
 import Chainweb.Parent
 import Chainweb.MinerReward
+import Chainweb.Pact.Payload
+import Data.ByteString.Short (ShortByteString)
+import qualified Data.ByteString.Short as SB
+import qualified Data.Vector as V
+import Data.Maybe
 import Chainweb.BlockCreationTime
 import Control.Concurrent.Async
 import qualified Data.Aeson as A
@@ -356,6 +362,7 @@ data BlockCtx = BlockCtx
   { _bctxParentCreationTime :: !(Parent BlockCreationTime)
   , _bctxParentHash :: !(Parent BlockHash)
   , _bctxParentHeight :: !(Parent BlockHeight)
+  , _bctxParentForkNumber :: !ForkNumber
   , _bctxChainId :: !ChainId
   , _bctxMinerReward :: !MinerReward
   } deriving stock (Eq, Generic, Show)
@@ -367,6 +374,7 @@ instance ToJSON BlockCtx where
     [ "parentCreationTime" A..= _bctxParentCreationTime
     , "parentHash" A..= _bctxParentHash
     , "parentHeight" A..= _bctxParentHeight
+    , "parentForkNumber" A..= _bctxParentForkNumber
     , "chainId" A..= _bctxChainId
     , "minerReward" A..= _bctxMinerReward
     ]
@@ -376,6 +384,7 @@ blockCtxOfEvaluationCtx cid ec = BlockCtx
   { _bctxParentCreationTime = _evaluationCtxParentCreationTime ec
   , _bctxParentHash = _evaluationCtxParentHash ec
   , _bctxParentHeight = _evaluationCtxParentHeight ec
+  , _bctxParentForkNumber = _evaluationCtxParentForkNumber ec
   , _bctxChainId = cid
   , _bctxMinerReward = _evaluationCtxMinerReward ec
   }
@@ -384,6 +393,7 @@ evaluationCtxOfBlockCtx :: BlockCtx -> EvaluationCtx ()
 evaluationCtxOfBlockCtx bctx = EvaluationCtx
   { _evaluationCtxParentCreationTime = _bctxParentCreationTime bctx
   , _evaluationCtxParentHeight = _bctxParentHeight bctx
+  , _evaluationCtxParentForkNumber = _bctxParentForkNumber bctx
   , _evaluationCtxParentHash = _bctxParentHash bctx
   , _evaluationCtxMinerReward = _bctxMinerReward bctx
   , _evaluationCtxPayload = ()
@@ -560,6 +570,7 @@ genesisEvaluationCtx serviceEnv = EvaluationCtx
     { _evaluationCtxParentCreationTime = Parent $ implicitVersion ^?! versionGenesis . genesisTime . atChain cid
     , _evaluationCtxParentHash = genesisParentBlockHash cid
     , _evaluationCtxParentHeight = Parent $ genesisHeight cid
+    , _evaluationCtxParentForkNumber = pact4ForkNumber
     -- should not be used
     , _evaluationCtxMinerReward = MinerReward 0
     , _evaluationCtxPayload = ConsensusPayload

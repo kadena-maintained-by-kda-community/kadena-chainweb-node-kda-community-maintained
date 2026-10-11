@@ -6,6 +6,8 @@
 {-# language ViewPatterns #-}
 {-# language ImportQualifiedPost #-}
 
+-- Note: Testnet04 is deprecated
+
 module Chainweb.Version.Testnet04(testnet04, pattern Testnet04) where
 
 import Control.Lens
@@ -17,6 +19,7 @@ import Chainweb.BlockHeight
 import Chainweb.ChainId
 import Chainweb.Difficulty
 import Chainweb.Graph
+import Chainweb.Pact.InitialGasModel
 import Chainweb.Pact.Transactions.CoinV3Transactions qualified as CoinV3
 import Chainweb.Pact.Transactions.CoinV4Transactions qualified as CoinV4
 import Chainweb.Pact.Transactions.CoinV5Transactions qualified as CoinV5
@@ -128,16 +131,14 @@ testnet04 = withVersion testnet04 $ ChainwebVersion
         Chainweb223Pact -> onAllChains $ ForkAtBlockHeight $ BlockHeight 4_100_681 -- 2024-03-06 12:00:00+00:00
         Chainweb224Pact -> onAllChains $ ForkAtBlockHeight $ BlockHeight 4_333_587 -- 2024-05-29 12:00:00+00:00
         Chainweb225Pact -> onAllChains $ ForkAtBlockHeight $ BlockHeight 4_575_072 -- 2024-08-21 12:00:00+00:00
-        Chainweb226Pact -> onAllChains $ ForkAtBlockHeight $ BlockHeight 4_816_925 -- 2024-11-13 12:00:00+00:00
         Pact5Fork -> onAllChains $ ForkAtBlockHeight $ BlockHeight 5_058_738       -- 2025-02-05 12:00:00+00:00
         Chainweb228Pact -> onAllChains $ ForkAtBlockHeight $ BlockHeight 5_155_146 -- 2025-03-11 00:00:00+00:00
-        Chainweb229Pact -> onAllChains $ ForkAtBlockHeight $ BlockHeight 5_300_466 -- 2025-04-30 12:00:00+00:00
+        HashedAdjacentRecord -> onAllChains ForkNever
         Chainweb230Pact -> onAllChains $ ForkAtBlockHeight $ BlockHeight 5_542_190 -- 2025-07-23 12:00:00+00:00
         Chainweb231Pact -> onAllChains $ ForkAtBlockHeight $ BlockHeight 5_783_985 -- 2025-10-15 12:00:00+00:00
-        Chainweb232Pact -> onAllChains ForkNever
-        HashedAdjacentRecord -> onAllChains ForkNever
+        Chainweb31 -> onAllChains ForkNever
+        Chainweb32 -> onAllChains ForkNever
         MigratePlatformShare -> onAllChains ForkNever
-
     , _versionGraphs =
         (to20ChainsTestnet, twentyChainGraph) `Above`
         Bottom (minBound, petersenChainGraph)
@@ -145,10 +146,14 @@ testnet04 = withVersion testnet04 $ ChainwebVersion
     , _versionWindow = WindowWidth 120
     , _versionHeaderBaseSizeBytes = 318 - 110
     , _versionMaxBlockGasLimit =
-        (succ $ testnet04 ^?! versionForks . at Chainweb216Pact . _Just . atChain (unsafeChainId 0) . _ForkAtBlockHeight, Just 180_000) `Above`
+        (succByHeight $ testnet04 ^?! versionForks . at Chainweb216Pact . _Just . atChain (unsafeChainId 0) , Just 180_000) `Above`
         Bottom (minBound, Nothing)
-    , _versionMinimumBlockHeaderHistory =
-        (succ $ testnet04 ^?! versionForks . at Chainweb231Pact . _Just . atChain (unsafeChainId 0) . _ForkAtBlockHeight, Just 20_000) `Above`
+    , _versionInitialGasModel = onAllChains $
+        (ForkNever, post32GasModel) `Above`
+        (succByHeight $ testnet04 ^?! versionForks . at Chainweb231Pact . _Just . atChain (unsafeChainId 0), post31GasModel) `Above`
+        Bottom (minBound, pre31GasModel)
+    , _versionSpvProofRootValidWindow =
+        (succByHeight $ testnet04 ^?! versionForks . at Chainweb231Pact . _Just . atChain (unsafeChainId 0) , Just 20_000) `Above`
         Bottom (minBound, Nothing)
     , _versionBootstraps = domainAddr2PeerInfo testnet04BootstrapHosts
     , _versionGenesis = VersionGenesis
@@ -209,7 +214,10 @@ testnet04 = withVersion testnet04 $ ChainwebVersion
         { _disablePeerValidation = False
         , _disableMempoolSync = False
         }
-    , _versionVerifierPluginNames = onAllChains $ (4_100_681, Set.fromList $ [VerifierName "hyperlane_v3_message"]) `Above`
+    , _versionVerifierPluginNames = onAllChains $
+        ( ForkAtBlockHeight $ BlockHeight 4_100_681
+        , Set.fromList [VerifierName "hyperlane_v3_message"]
+        ) `Above`
         Bottom (minBound, mempty)
     , _versionQuirks = VersionQuirks
         { _quirkGasFees = onChains
@@ -219,4 +227,6 @@ testnet04 = withVersion testnet04 $ ChainwebVersion
         }
     , _versionServiceDate = Just "2026-01-07T00:00:00Z"
     , _versionPayloadProviderTypes = onAllChains PactProvider
+    , _versionForkNumber = 0
+    , _versionForkVoteCastingLength = 120 * 119 -- 5 days
     }

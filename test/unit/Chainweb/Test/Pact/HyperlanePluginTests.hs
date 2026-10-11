@@ -28,13 +28,11 @@ import Chainweb.Utils.Serialization
 import Chainweb.VerifierPlugin.Hyperlane.Binary
 import Chainweb.VerifierPlugin.Hyperlane.Utils
 import Chainweb.Version
-import Pact.Core.Command.Types
+import Pact.Core.Command.Types hiding (ChainId)
 import Pact.Core.Gas
 import Pact.Core.Names
 import Pact.Core.PactValue
-import Pact.Core.Capabilities
 import Pact.Core.Verifiers
-import Pact.Core.Signer
 import Pact.Core.Errors
 
 tests :: RocksDb -> TestTree
@@ -114,7 +112,7 @@ hyperlaneValidatorAnnouncementTest baseRdb step = withVersion v $ runResourceT $
             >>= P.list
                 [P.match _Just ? P.checkAll
                     [ successfulTx
-                    , P.fun _crGas ? P.equals (Gas 16342)
+                    , P.fun _crGas ? P.equals (Gas 16364)
                     ]
                 ]
 
@@ -193,7 +191,7 @@ hyperlaneValidatorAnnouncementTest baseRdb step = withVersion v $ runResourceT $
                 [ P.match _Just ? P.checkAll
                     [ P.fun _crResult ? P.match _PactResultErr ? P.checkAll
                         [ P.fun _peType ? P.equals (ErrorType "EvalError")
-                        , P.fun _peMsg ? P.equals "Incorrect signer. Expected: PLiteral (LString {_lString = \"0x6c414e7a15088023e28af44ad0e1d593671e4b15\"}) but got PLiteral (LString {_lString = \"0x5c414e7a15088023e28af44ad0e1d593671e4b15\"})"
+                        , P.fun _peMsg ? P.equals "Incorrect signer. Expected: PLiteral (LString \"0x6c414e7a15088023e28af44ad0e1d593671e4b15\") but got PLiteral (LString \"0x5c414e7a15088023e28af44ad0e1d593671e4b15\")"
                         ]
                     , P.fun _crGas ? P.equals (Gas 100000)
                     ]
@@ -380,7 +378,7 @@ hyperlaneVerifySuccess baseRdb step = withVersion v $ runResourceT $ do
             [P.match _Just
                 ? P.checkAll
                     [ successfulTx
-                    , P.fun _crGas ? P.equals (Gas 16398)
+                    , P.fun _crGas ? P.equals (Gas 16420)
                     ]
             ]
 
@@ -401,7 +399,7 @@ hyperlaneVerifyMoreValidatorsSuccess baseRdb step = withVersion v $ runResourceT
         poll fx chain0 [cmdToRequestKey cmd] >>= P.list
             [ P.match _Just ? P.checkAll
                 [ successfulTx
-                , P.fun _crGas ? P.equals (Gas 16398)
+                , P.fun _crGas ? P.equals (Gas 16421)
                 ]
             ]
 

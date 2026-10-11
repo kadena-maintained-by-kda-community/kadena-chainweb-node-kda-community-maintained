@@ -6,6 +6,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NumericUnderscores #-}
@@ -60,6 +61,7 @@ import Data.Maybe
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time
+import Data.Time.Format.ISO8601
 import Data.Typeable
 
 import GHC.Generics hiding (from)
@@ -94,7 +96,6 @@ import Chainweb.Pact.Backend.DbCache (DbCacheStats)
 import Chainweb.Pact.RestAPI.Server (PactCmdLog(..))
 import Chainweb.Pact.Types
 import Chainweb.Time
-import Data.Time.Format.ISO8601
 import Chainweb.Utils
 import Chainweb.Utils.RequestLog
 import Chainweb.Version
@@ -102,19 +103,14 @@ import Chainweb.Version.Mainnet
 import Chainweb.Version.Testnet04 (testnet04)
 
 import Chainweb.Storage.Table.RocksDB
-
 import Data.LogMessage
-
 import P2P.Node
-
 import PkgInfo
-
+import Utils.CheckRLimits
+import Utils.InstallSignalHandlers
 import Utils.Logging
 import Utils.Logging.Config
 import Utils.Logging.Trace
-
-import Utils.CheckRLimits
-import Utils.InstallSignalHandlers
 
 -- -------------------------------------------------------------------------- --
 -- Configuration
@@ -476,40 +472,33 @@ withServiceDate
     -> IO a
     -> IO a
 withServiceDate v lf msd inner = case msd of
-  Nothing -> do
-    inner
-  Just sd -> do
-    if _versionCode v == _versionCode mainnet || _versionCode v == _versionCode testnet04
-    then do
-      race (timer sd) inner >>= \case
-        Left () -> error "Service date thread terminated unexpectedly"
-        Right a -> return a
-    else do
-      inner
+    Nothing -> inner
+    Just sd
+        | _versionCode v == _versionCode mainnet
+            || _versionCode v == _versionCode testnet04 ->
+                race (timer sd) inner >>= \case
+                    Left () -> error "Service date thread terminated unexpectedly"
+                    Right a -> return a
+        | otherwise -> inner
   where
     timer t = runForever lf "ServiceDate" $ do
-      now <- getCurrentTime
-      when (now >= t) $ do
-        lf Error shutdownMessage
-        throw $ ServiceDate shutdownMessage
+        now <- getCurrentTime
+        when (now >= t) $ do
+            lf Error shutdownMessage
+            throwIO $ ServiceDate shutdownMessage
 
-      let w = diffUTCTime t now
-      let micros = round $ w * 1_000_000
-      lf Warn warning
-      threadDelay $ min (10 * 60 * 1_000_000) micros
-
+        let micros = round (diffUTCTime t now * 1_000_000)
+        lf Warn warning
+        threadDelay $ min (10 * 60 * 1_000_000) micros
       where
-        warning :: Text
         warning = T.concat
-          [ "This version of chainweb node will stop working at " <> sshow t <> "."
-          , " Please upgrade to a new version before that date."
-          ]
-
-        shutdownMessage :: Text
+            [ "This version of chainweb node will stop working at " <> sshow t <> "."
+            , " Please upgrade to a new version before that date."
+            ]
         shutdownMessage = T.concat
-          [ "Shutting down. This version of chainweb was only valid until " <> sshow t <> "."
-          , " Please upgrade to a new version."
-          ]
+            [ "Shutting down. This version of chainweb was only valid until " <> sshow t <> "."
+            , " Please upgrade to a new version."
+            ]
 
 -- -------------------------------------------------------------------------- --
 -- Encode Package Info into Log mesage scopes
@@ -555,7 +544,7 @@ main = do
                     kt <- mapM iso8601ParseM (_versionServiceDate implicitVersion)
                     withServiceDate (_configChainwebVersion (_nodeConfigChainweb conf)) (logFunctionText logger) kt $ void $
                         race (node conf logger) (gcRunner (logFunctionText logger))
-  where
+    where
     gcRunner lf = runForever lf "GarbageCollect" $ do
         performMajorGC
         threadDelay (30 * 1_000_000)

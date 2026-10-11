@@ -30,8 +30,6 @@ import qualified Data.HashSet as HS
 import qualified Data.Set as Set
 import qualified Chainweb.BlockHeader.Genesis.InstantTimedCPM0Payload as IN0
 import qualified Chainweb.BlockHeader.Genesis.InstantTimedCPM1to9Payload as INN
--- import qualified Chainweb.BlockHeader.Genesis.Pact5InstantTimedCPM0Payload as PIN0
--- import qualified Chainweb.BlockHeader.Genesis.Pact5InstantTimedCPM1to9Payload as PINN
 import qualified Chainweb.BlockHeader.Genesis.Pact53TransitionTimedCPM0Payload as PIT0
 import qualified Chainweb.BlockHeader.Genesis.Pact53TransitionTimedCPM1to9Payload as PITN
 -- import qualified Chainweb.BlockHeader.Genesis.QuirkedGasPact5InstantTimedCPM0Payload as QPIN0
@@ -44,8 +42,10 @@ import qualified Chainweb.BlockHeader.Genesis.Pact53TransitionTimedCPM1to9Payloa
 import Chainweb.BlockCreationTime
 import Chainweb.BlockHeight
 import Chainweb.Difficulty
+import Chainweb.ForkState
 import Chainweb.Graph
 import Chainweb.HostAddress
+import Chainweb.Pact.InitialGasModel
 import Chainweb.Pact.Utils
 import Chainweb.Time
 import Chainweb.Utils
@@ -95,8 +95,11 @@ testVersionTemplate gs = ChainwebVersion
     , _versionWindow = WindowWidth 120
     , _versionMaxBlockGasLimit = Bottom (minBound, Just 2_000_000)
     , _versionBootstraps = [testBootstrapPeerInfos]
-    , _versionVerifierPluginNames = (Bottom (minBound, mempty) <$ cids)
-    , _versionMinimumBlockHeaderHistory = Bottom (minBound, Just 20)
+    , _versionVerifierPluginNames = Bottom (minBound, mempty) <$ cids
+    , _versionForkNumber = 0
+    , _versionForkVoteCastingLength = 20
+    , _versionSpvProofRootValidWindow = Bottom (minBound, Nothing)
+    , _versionInitialGasModel = Bottom (minBound, post32GasModel) <$ cids
     , _versionServiceDate = Nothing
     }
     where cids = ChainMap $ HS.toMap $ graphChainIds $ snd $ ruleHead gs
@@ -106,7 +109,7 @@ barebonesTestVersion :: ChainGraph -> ChainwebVersion
 barebonesTestVersion g =
     testVersionTemplate gs
         & versionWindow .~ WindowWidth 120
-        & versionBlockDelay .~ BlockDelay 1_000_000
+        & versionBlockDelay .~ BlockDelay 500_000
         & versionName .~ ChainwebVersionName ("test-" <> toText g)
         & versionCheats .~ VersionCheats
             { _disablePow = True
@@ -133,10 +136,11 @@ barebonesTestVersion g =
     cids = ChainMap $ HS.toMap $ graphChainIds $ snd $ ruleHead gs
 
 -- | A test version without Pact or PoW, with a chain graph upgrade at block height 8.
-timedConsensusVersion :: ChainGraph -> ChainGraph -> ChainwebVersion
-timedConsensusVersion g1 g2 =
+timedConsensusVersion :: ForkNumber -> ChainGraph -> ChainGraph -> ChainwebVersion
+timedConsensusVersion forkNum g1 g2 =
     testVersionTemplate gs
-        & versionName .~ ChainwebVersionName ("timedConsensus-" <> toText g1 <> "-" <> toText g2)
+        & versionName .~ ChainwebVersionName ("timedConsensus-fork" <> sshow forkNum <> "-" <> toText g1 <> "-" <> toText g2)
+        & versionForkNumber .~ forkNum
         & versionBlockDelay .~ BlockDelay 1_000_000
         & versionWindow .~ WindowWidth 120
         & versionForks .~ tabulateHashMap (\case

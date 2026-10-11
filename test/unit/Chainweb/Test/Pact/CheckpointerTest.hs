@@ -43,6 +43,7 @@ import Test.Tasty.HUnit (assertEqual, testCase)
 import Test.Tasty.Hedgehog
 import Chainweb.BlockHash
 import Chainweb.BlockHeader
+import Chainweb.ForkState (pact4ForkNumber)
 import Chainweb.Graph (singletonChainGraph)
 import Chainweb.MerkleLogHash
 import Chainweb.MerkleUniverse (ChainwebMerkleHashAlgorithm)
@@ -209,6 +210,7 @@ runBlocks sql rootBlockCtx blks =
                 { _bctxParentCreationTime = fakeParentCreationTime
                 , _bctxParentHash = Parent $ fst fakeBlockInfo
                 , _bctxParentHeight = Parent $ childBlockHeight cid parent
+                , _bctxParentForkNumber = pact4ForkNumber
                 , _bctxChainId = cid
                 , _bctxMinerReward = blockMinerReward (childBlockHeight cid parent)
                 }
@@ -216,6 +218,7 @@ runBlocks sql rootBlockCtx blks =
                 { _bctxParentCreationTime = fakeParentCreationTime
                 , _bctxParentHash = _rankedBlockHashHash <$> parent
                 , _bctxParentHeight = _rankedBlockHashHeight <$> parent
+                , _bctxParentForkNumber = pact4ForkNumber
                 , _bctxChainId = cid
                 , _bctxMinerReward = blockMinerReward (unwrapParent $ _rankedBlockHashHeight <$> parent)
                 }
@@ -368,6 +371,7 @@ tests = testGroup "Pact5 Checkpointer tests"
         { _evaluationCtxParentCreationTime = Parent $ implicitVersion ^?! versionGenesis . genesisTime . atChain c
         , _evaluationCtxParentHash = genesisParentBlockHash c
         , _evaluationCtxParentHeight = Parent $ genesisHeight c
+        , _evaluationCtxParentForkNumber = pact4ForkNumber
         -- should not be used
         , _evaluationCtxMinerReward = MinerReward 0
         , _evaluationCtxPayload = ConsensusPayload

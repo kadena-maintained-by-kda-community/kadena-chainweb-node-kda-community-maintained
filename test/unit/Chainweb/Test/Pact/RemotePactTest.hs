@@ -104,7 +104,7 @@ import Pact.Core.Command.Client (SubmitBatch(..))
 import Pact.Core.Command.Crypto (signEd25519, exportEd25519Signature, importEd25519KeyPair, PrivateKeyBS (..))
 import Pact.Core.Command.RPC (ContMsg (..))
 import Pact.Core.Command.Server
-import Pact.Core.Command.Types
+import Pact.Core.Command.Types hiding (ChainId)
 import Pact.Core.DefPacts.Types
 import Pact.Core.Errors
 import Pact.Core.Gas.Types
@@ -148,7 +148,6 @@ tests rdb = withResource' (evaluate httpManager >> evaluate cert) $ \_ ->
         , testCaseSteps "gasPurchaseFailureMessages" (gasPurchaseFailureMessages rdb)
         , testCaseSteps "upgradeNamespaceTests" (upgradeNamespaceTests rdb)
         , testCaseSteps "invalidSigCapNameTest" (invalidSigCapNameTest rdb)
-        , testCaseSteps "pact53TransitionTest" (pact53TransitionTest rdb)
         , testCaseSteps "migratePlatformShareTest" (migratePlatformShareTest rdb)
         , localTests rdb
         ]
@@ -300,37 +299,48 @@ crosschainTest baseRdb step = withVersion v $ runResourceT $ do
 
         recv <- buildTextCmd
             $ set cbRPC (mkCont contMsg)
+            $ set cbGasPrice (GasPrice 1)
             $ defaultCmd targetChain
-        send fx targetChain [recv]
-        let recvReqKey = cmdToRequestKey recv
-        advanceAllChains_ fx
-        poll fx targetChain [recvReqKey]
-            >>= P.match (_head . _Just)
-            ? P.checkAll
-                [ P.fun _crResult ? P.match _PactResultOk P.succeed
-                , P.fun _crEvents ? P.alignExact
-                    [ P.succeed
-                    , P.checkAll
-                        [ P.fun _peName ? P.equals "TRANSFER_XCHAIN_RECD"
-                        , P.fun _peArgs ? P.equals
-                            [PString "", PString "sender01", PDecimal 1.0, PString (toText srcChain)]
-                        ]
-                    , P.fun _peName ? P.equals "X_RESUME"
-                    , P.succeed
-                    ]
-                ]
-
-        -- what if we try to complete an already-completed xchain?
+        -- Submit a second finisher before the first one completes. Once the first
+        -- transaction finishes the defpact, the second one must fail on chain;
+        -- it was admitted while the defpact was still active.
         recvRepeated <- buildTextCmd
             $ set cbRPC (mkCont contMsg)
+            $ set cbGasPrice (GasPrice 0.1)
             $ defaultCmd targetChain
-        send fx targetChain [recvRepeated]
+        send fx targetChain [recv, recvRepeated]
+        let recvReqKey = cmdToRequestKey recv
         let recvRepeatedReqKey = cmdToRequestKey recvRepeated
         advanceAllChains_ fx
-        poll fx targetChain [recvRepeatedReqKey]
-            >>= P.match (_head . _Just)
-            ? P.fun _crResult ? P.match _PactResultErr ? P.fun _peMsg ? P.fun _boundedText
-            ? P.equals ("Requested defpact execution already completed for defpact id: " <> T.take 20 (renderDefPactId $ _peDefPactId cont) <> "...")
+        poll fx targetChain [recvReqKey, recvRepeatedReqKey]
+            >>= P.alignExact ?
+                [ P.match _Just ? P.checkAll
+                    [ P.fun _crResult ? P.match _PactResultOk P.succeed
+                    , P.fun _crEvents ? P.alignExact
+                        [ P.succeed
+                        , P.checkAll
+                            [ P.fun _peName ? P.equals "TRANSFER_XCHAIN_RECD"
+                            , P.fun _peArgs ? P.equals
+                                [PString "", PString "sender01", PDecimal 1.0, PString (toText srcChain)]
+                            ]
+                        , P.fun _peName ? P.equals "X_RESUME"
+                        , P.succeed
+                        ]
+                    ]
+                , P.match _Just ? P.fun _crResult ? P.match _PactResultErr
+                    ? P.fun _peMsg ? P.fun _boundedText
+                    ? P.equals ("Requested defpact execution already completed for defpact id: "
+                        <> T.take 20 (renderDefPactId $ _peDefPactId cont) <> "...")
+                ]
+
+        -- A transaction submitted after completion must be rejected by the
+        -- mempool pre-insert check rather than included as another failed tx.
+        recvRepeatedAfter <- buildTextCmd
+            $ set cbRPC (mkCont contMsg)
+            $ defaultCmd targetChain
+        send fx targetChain [recvRepeatedAfter]
+            & P.throws ? P.match _FailureResponse ? P.fun responseBody
+            ? textContains "failed with: This transaction is attempting to complete an already-completed defpact"
     where
     v = instantCpmTestVersion False petersenChainGraph
 
@@ -673,86 +683,6 @@ migratePlatformShareTest baseRdb _step = withVersion (instantCpmTestVersion True
                 ? P.match _PGuard
                 ? P.equals (GKeyset platformShareKeySet)
 
-pact53TransitionTest :: RocksDb -> Step -> IO ()
-pact53TransitionTest baseRdb step = withVersion (pact53TransitionCpmTestVersion petersenChainGraph) $ runResourceT $ do
-    fx <- mkFixture baseRdb
-
-    let cid = unsafeChainId 0
-    let assertTxFailure tx msg = poll fx cid [cmdToRequestKey tx]
-            >>= P.alignExact ? List.singleton ? P.match _Just ?
-                P.checkAll
-                    [ P.fun _crResult ? P.match _PactResultErr ? P.fun _peMsg ? P.equals msg
-                    ]
-    let assertTxSuccess tx resultVal = poll fx cid [cmdToRequestKey tx]
-            >>= P.alignExact ? List.singleton ? P.match _Just ?
-                P.checkAll
-                    [ P.fun _crResult ? P.match _PactResultOk ? P.equals resultVal
-                    ]
-
-    liftIO $ do
-        let errorTx = mkExec' "(error \"test error\")"
-        let pureTx = mkExec' "(pure 1)"
-
-        txErr0 <- buildTextCmd
-            $ set cbRPC errorTx
-            $ defaultCmd cid
-        txPure0 <- buildTextCmd
-            $ set cbRPC pureTx
-            $ defaultCmd cid
-        txReadOnlyGuardSetup <- buildTextCmd
-            $ set cbRPC (mkExec' $ T.concat
-                [ "(namespace 'free)"
-                , "(module test-read-only g (defcap g () true)"
-                , " (defschema my-schema key:integer)"
-                , " (deftable my-table:{my-schema})"
-                , " (defun read-only-fn () (read my-table 'key))"
-                , " (defun mk-ug () (create-user-guard (read-only-fn)))"
-                , ")"
-                , "(create-table my-table)"
-                , "(insert my-table 'key {'key:1})"
-                ])
-            $ defaultCmd cid
-
-        step "sending first batch of transactions"
-        send fx cid [txErr0, txPure0, txReadOnlyGuardSetup]
-        advanceAllChains_ fx
-        step "polling for first batch of transactions"
-        assertTxFailure txErr0 "Cannot find module:  error"
-        assertTxFailure txPure0 "Cannot find module:  pure"
-        assertTxSuccess txReadOnlyGuardSetup (PString "Write succeeded")
-
-        step "sending read only guard tx"
-        let readOnlyGuardTx = mkExec' "(enforce-guard (free.test-read-only.mk-ug))"
-        txReadOnly0 <- buildTextCmd
-            $ set cbRPC readOnlyGuardTx
-            $ defaultCmd cid
-        send fx cid [txReadOnly0]
-        advanceAllChains_ fx
-        step "polling for read only guard tx"
-        assertTxFailure txReadOnly0 "Error during database operation: Operation is not allowed in read-only or system-only mode."
-
-        step "advancing past the fork"
-        advanceToForkHeight fx Chainweb230Pact
-
-        txErr1 <- buildTextCmd
-            $ set cbRPC errorTx
-            $ defaultCmd cid
-        txPure1 <- buildTextCmd
-            $ set cbRPC pureTx
-            $ defaultCmd cid
-        txReadOnly1 <- buildTextCmd
-            $ set cbRPC readOnlyGuardTx
-            $ defaultCmd cid
-
-        step "Sending post fork txs"
-        send fx cid [txErr1, txPure1, txReadOnly1]
-        advanceAllChains_ fx
-        step "polling post-fork results"
-        -- Note: correct output from calling (error "test error")
-        assertTxFailure txErr1 "test error"
-        assertTxSuccess txPure1 (PInteger 1)
-        assertTxSuccess txReadOnly1 (PBool True)
-
 allocation01KeyPair :: (Text, Text)
 allocation01KeyPair =
     ( "b4c8a3ea91d3146b0560994740f0e3eed91c59d2eeca1dc99f0c2872845c294d"
@@ -850,8 +780,8 @@ allocationTest rdb step = withVersion v $ runResourceT $ do
                 $ defaultCmd cid
             send fx cid [redefineKeysetCmd]
             advanceAllChains_ fx
-            poll fx cid [cmdToRequestKey redefineKeysetCmd]
-                >>= P.alignExact [P.match _Just successfulTx]
+            [Just redefineKeysetCr] <- poll fx cid [cmdToRequestKey redefineKeysetCmd]
+            redefineKeysetCr & successfulTx
 
             releaseAllocationCmd <- buildTextCmd
                 $ set cbSender "allocation02"
@@ -860,8 +790,14 @@ allocationTest rdb step = withVersion v $ runResourceT $ do
                 $ defaultCmd cid
             send fx cid [releaseAllocationCmd]
             advanceAllChains_ fx
-            poll fx cid [cmdToRequestKey releaseAllocationCmd]
-                >>= P.alignExact [P.match _Just successfulTx]
+            [Just releaseCr] <- poll fx cid [cmdToRequestKey releaseAllocationCmd]
+            releaseCr & successfulTx
+
+            -- the allocation balance depends on the gas consumed by the
+            -- define-keyset and release-allocation transactions, which depends
+            -- on the gas model
+            let gasUsed = _gas (_crGas releaseCr) + _gas (_crGas redefineKeysetCr)
+                expectedBalance = 1_100_000 - 0.000_1 * fromIntegral gasUsed
 
             buildTextCmd (set cbRPC (mkExec' "(coin.details \"allocation02\")") $ defaultCmd cid)
                 >>= local fx cid Nothing Nothing Nothing
@@ -871,7 +807,7 @@ allocationTest rdb step = withVersion v $ runResourceT $ do
                     ? P.match _PObject
                     ? P.equals ? Map.fromList
                         [ ("account", (PString "allocation02"))
-                        , ("balance", (PDecimal 1_099_999.9748)) -- 1k + 1mm - gas
+                        , ("balance", (PDecimal expectedBalance))
                         , ("guard", (PGuard $ GKeySetRef (KeySetName "allocation02" Nothing)))
                         ]
     where

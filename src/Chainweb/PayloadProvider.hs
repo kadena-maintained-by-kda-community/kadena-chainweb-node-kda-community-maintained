@@ -104,6 +104,7 @@ module Chainweb.PayloadProvider
 import Chainweb.BlockCreationTime
 import Chainweb.BlockHash
 import Chainweb.BlockHeader
+import Chainweb.ForkState (ForkNumber)
 import Chainweb.BlockHeight
 import Chainweb.BlockPayloadHash
 import Chainweb.MinerReward
@@ -290,6 +291,8 @@ data EvaluationCtx p = EvaluationCtx
         -- ^ Block hash of the parent block.
     , _evaluationCtxParentHeight :: !(Parent BlockHeight)
         -- ^ Block height of the parent block.
+    , _evaluationCtxParentForkNumber :: !ForkNumber
+        -- ^ Fork number of the parent block.
     , _evaluationCtxMinerReward :: !MinerReward
         -- ^ The miner reward that is assigned to the miner of the block. Miner
         -- rewards are not constant and determined by the consensus protocol. It
@@ -340,6 +343,7 @@ evaluationCtxProperties a =
     [ "parentCreationTime" .= _evaluationCtxParentCreationTime a
     , "parentBlockHash" .= _evaluationCtxParentHash a
     , "parentHeight" .= _evaluationCtxParentHeight a
+    , "parentForkNumber" .= _evaluationCtxParentForkNumber a
     , "minerReward" .= _evaluationCtxMinerReward a
     , "payload" .= _evaluationCtxPayload a
     ]
@@ -385,6 +389,7 @@ blockHeaderToEvaluationCtx (Parent ph) = EvaluationCtx
     { _evaluationCtxParentCreationTime = Parent $ view blockCreationTime ph
     , _evaluationCtxParentHash = Parent $ view blockHash ph
     , _evaluationCtxParentHeight = parentHeight
+    , _evaluationCtxParentForkNumber = view blockForkNumber ph
     , _evaluationCtxMinerReward = blockMinerReward height
     , _evaluationCtxPayload = ()
     }

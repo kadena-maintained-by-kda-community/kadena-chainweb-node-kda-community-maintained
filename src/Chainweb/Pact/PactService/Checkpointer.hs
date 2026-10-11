@@ -68,6 +68,7 @@ import Chainweb.BlockCreationTime
 import Chainweb.BlockHash
 import Chainweb.BlockHeader
 import Chainweb.BlockHeight
+import Chainweb.ForkState (pact4ForkNumber)
 import Chainweb.Logger
 import Chainweb.MinerReward
 import Chainweb.Pact.Backend.ChainwebPactDb qualified as ChainwebPactDb
@@ -172,6 +173,7 @@ readFrom logger cid sql parentCreationTime parent pactRead = do
             { _bctxParentCreationTime = parentCreationTime
             , _bctxParentHash = _rankedBlockHashHash <$> parent
             , _bctxParentHeight = _rankedBlockHashHeight <$> parent
+            , _bctxParentForkNumber = pact4ForkNumber
             , _bctxMinerReward = blockMinerReward (childBlockHeight cid parent)
             , _bctxChainId = cid
             }
@@ -232,8 +234,8 @@ rewindTo cid sql ancestor = do
 
 data PactRead a
     = PactRead
-        { pact4Read :: (forall logger. Logger logger => Pact4.BlockEnv logger -> IO a)
-        , pact5Read :: BlockEnv -> BlockHandle -> IO a
+        { pact4Read :: (forall logger. HasCallStack => Logger logger => Pact4.BlockEnv logger -> IO a)
+        , pact5Read :: HasCallStack => BlockEnv -> BlockHandle -> IO a
         }
 
 readPact5 :: String -> (BlockEnv -> BlockHandle -> IO a) -> PactRead a

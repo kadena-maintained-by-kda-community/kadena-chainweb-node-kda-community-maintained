@@ -54,7 +54,7 @@ import Data.Text.Encoding qualified as T
 import Data.Text.IO qualified as T
 import GHC.Stack
 import Pact.Core.Capabilities
-import Pact.Core.Command.Types
+import Pact.Core.Command.Types hiding (ChainId)
 import Pact.Core.Compile(CompileValue(..))
 import Pact.Core.Errors
 import Pact.Core.Evaluate
@@ -66,7 +66,6 @@ import Pact.Core.Names
 import Pact.Core.PactValue
 import Pact.Core.Persistence hiding (pactDb)
 import Pact.Core.SPV (noSPVSupport)
-import Pact.Core.Signer
 import Pact.Core.Verifiers
 import Pact.JSON.Encode qualified as J
 import PropertyMatchers ((?), pattern (:=>))

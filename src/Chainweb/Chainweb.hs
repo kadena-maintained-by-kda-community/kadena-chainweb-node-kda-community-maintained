@@ -142,7 +142,7 @@ import Chainweb.Chainweb.Configuration
 import Chainweb.Chainweb.CutResources
 import Chainweb.Chainweb.MinerResources
 import Chainweb.Chainweb.PeerResources
-import Chainweb.Counter
+import qualified Chainweb.Counter as Counter
 import Chainweb.Cut
 import Chainweb.CutDB
 import Chainweb.HostAddress
@@ -269,12 +269,12 @@ withChainwebInternal
     -> IO ()
 withChainwebInternal conf logger peerRes serviceSock rocksDb defaultPactDbDir backupDir inner = do
     logFunctionJson logger Info InitializingChainResources
-    txFailuresCounter <- newCounter @"txFailures"
+    txFailuresCounter <- Counter.newCounter @"txFailures"
     let monitorTxFailuresCounter =
             runForever (logFunctionText logger) "monitor txFailuresCounter" $ do
                 approximateThreadDelay 60_000_000 {- 1 minute -}
-                logFunctionCounter logger Info . (:[]) =<<
-                    roll txFailuresCounter
+                Counter.logFunctionCounter logger Info . (:[]) =<<
+                    Counter.roll txFailuresCounter
     logg Debug "start initializing chain resources"
     logFunctionText logger Info $ "opening pact db in directory " <> sshow defaultPactDbDir
     runResourceT $ do
@@ -669,7 +669,7 @@ runChainweb cw nowServing = do
         | Just InsecureConnectionDenied <- fromException e =
             return ()
         | Just ClientClosedConnectionPrematurely <- fromException e =
-            inc clientClosedConnectionsCounter
+            Counter.inc clientClosedConnectionsCounter
         -- this isn't really an error, this is a graceful close.
         -- see https://github.com/kazu-yamamoto/http2/issues/102
         | Just HTTP2.ConnectionIsClosed <- fromException e =
@@ -680,18 +680,18 @@ runChainweb cw nowServing = do
 
     -- P2P Server
 
-    serverSettings :: Counter "clientClosedConnections" -> Settings
+    serverSettings :: Counter.Counter "clientClosedConnections" -> Settings
     serverSettings clientClosedConnectionsCounter =
         peerServerSettings (_peerResPeer $ _chainwebPeer cw)
         & setOnException (logWarpException "P2P API" clientClosedConnectionsCounter)
         & setBeforeMainLoop (nowServing (nowServingP2PAPI .~ True))
 
-    monitorConnectionsClosedByClient :: Counter "clientClosedConnections" -> IO ()
+    monitorConnectionsClosedByClient :: Counter.Counter "clientClosedConnections" -> IO ()
     monitorConnectionsClosedByClient clientClosedConnectionsCounter =
         runForever logg "ConnectionClosedByClient.counter" $ do
             approximateThreadDelay 60_000_000 {- 1 minute -}
-            logFunctionCounter (_chainwebLogger cw) Info . (:[]) =<<
-                roll clientClosedConnectionsCounter
+            Counter.logFunctionCounter (_chainwebLogger cw) Info . (:[]) =<<
+                Counter.roll clientClosedConnectionsCounter
 
     chainwebServerDbs :: ChainwebServerDbs logger Pact.Transaction
     chainwebServerDbs = ChainwebServerDbs
@@ -708,8 +708,7 @@ runChainweb cw nowServing = do
 
     serve :: Middleware -> IO ()
     serve mw = do
-
-        clientClosedConnectionsCounter <- newCounter
+        clientClosedConnectionsCounter <- Counter.newCounter
         concurrently_
             (serveChainwebSocketTls
                 (serverSettings clientClosedConnectionsCounter)
@@ -724,7 +723,7 @@ runChainweb cw nowServing = do
     -- serve without tls
     servePlain :: Middleware -> IO ()
     servePlain mw = do
-        clientClosedConnectionsCounter <- newCounter
+        clientClosedConnectionsCounter <- Counter.newCounter
         concurrently_
             (serveChainwebSocket
                 (serverSettings clientClosedConnectionsCounter)
@@ -762,7 +761,7 @@ runChainweb cw nowServing = do
     -- Service API Server
 
     serviceApiServerSettings
-        :: Counter "clientClosedConnections"
+        :: Counter.Counter "clientClosedConnections"
         -> Port -> HostPreference -> Settings
     serviceApiServerSettings clientClosedConnectionsCounter port interface = defaultSettings
         & setPort (int port)
@@ -778,7 +777,7 @@ runChainweb cw nowServing = do
 
     serveServiceApi :: Middleware -> IO ()
     serveServiceApi mw = do
-        clientClosedConnectionsCounter <- newCounter
+        clientClosedConnectionsCounter <- Counter.newCounter
         serveServiceApiSocket
             (serviceApiServerSettings clientClosedConnectionsCounter (fst $ _chainwebServiceSocket cw) serviceApiHost)
             (snd $ _chainwebServiceSocket cw)

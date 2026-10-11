@@ -15,6 +15,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Chainweb.Test.Pact.CmdBuilder where
 
@@ -26,7 +27,6 @@ import GHC.Generics
 import GHC.Stack
 import Pact.Core.Capabilities
 import Pact.Core.Guards
-import Pact.Core.Verifiers (Verifier, ParsedVerifierProof)
 import Pact.Core.Command.RPC
 import Pact.Core.ChainData
 import Pact.Core.Gas.Types
@@ -43,9 +43,8 @@ import Data.Maybe
 import Pact.Core.Command.Crypto
 import Pact.Core.Command.Util
 import qualified Data.Text as T
-import Pact.Core.Names (Field(..), QualifiedName, DefPactId)
-import Pact.Core.PactValue
-import Pact.Core.Signer
+import Pact.Core.Names (Field(..))
+import Pact.Core.PactValue (PactValue(..), pattern PString)
 import qualified Data.Set as Set
 import Pact.Core.StableEncoding
 import Chainweb.Pact.RestAPI.Server (validateCommand)

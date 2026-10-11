@@ -40,6 +40,7 @@ module Chainweb.Pact.PactService.Pact4.ExecBlock
 import Chainweb.BlockCreationTime
 import Chainweb.BlockHeader
 import Chainweb.BlockHeight
+import Chainweb.ForkState (pact4ForkNumber)
 import Chainweb.Logger
 import Chainweb.Miner.Pact
 import Chainweb.MinerReward
@@ -172,7 +173,8 @@ execBlock logger serviceEnv blockEnv payload = do
     return (totalGasUsed, pwo)
   where
     blockGasLimit =
-      fromIntegral <$> maxBlockGasLimit (blockEnv ^. benvBlockCtx . to _bctxCurrentBlockHeight)
+      fromIntegral <$> maxBlockGasLimit pact4ForkNumber
+        (blockEnv ^. benvBlockCtx . to _bctxCurrentBlockHeight)
 
     logInitCache = do
       mc <- fmap (fmap instr . _getModuleCache) <$> readMVar (_psModuleInitCacheVar serviceEnv)

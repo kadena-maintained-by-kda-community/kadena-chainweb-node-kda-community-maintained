@@ -50,6 +50,8 @@ data Rule h a = Above (h, a) (Rule h a) | Bottom (h, a)
     deriving anyclass (Hashable, NFData)
 deriving stock instance (Show h, Show a) => Show (Rule h a)
 
+infixr 7 `Above`
+
 instance Bifunctor Rule where
   bimap :: (h -> h') -> (a -> a') -> Rule h a -> Rule h' a'
   bimap fh fa = go

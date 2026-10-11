@@ -283,6 +283,9 @@ instance FoldableWithIndex ChainId ChainMap where
 instance TraversableWithIndex ChainId ChainMap where
     itraverse f (ChainMap a) = ChainMap <$> itraverse f a
 
+instance Unzip ChainMap where
+    unzip = unzipDefault
+
 instance Semialign ChainMap where
     align (ChainMap l) (ChainMap r) = ChainMap $ align l r
 

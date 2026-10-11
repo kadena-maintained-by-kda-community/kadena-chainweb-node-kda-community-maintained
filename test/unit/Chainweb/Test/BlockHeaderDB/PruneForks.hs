@@ -29,7 +29,7 @@ import Chainweb.BlockHeaderDB.Internal
 import Chainweb.BlockHeaderDB.PruneForks
 import Chainweb.ChainValue
 import Chainweb.Core.Brief
-import Chainweb.Cut (unsafeMkCut, genesisCut)
+import Chainweb.Cut (unsafeMkCut, genesisCut, Cut)
 import Chainweb.Cut.Create
 import Chainweb.Cut.CutHashes
 import Chainweb.CutDB
@@ -95,6 +95,17 @@ withDbs rdb = do
     testLogger <- liftIO getTestLogger
     (_, cutDb) <- withTestCutDb rdb id 0 (onAllChains DisabledPayloadProvider) testLogger
     return cutDb
+
+-- | Add a cut to the CutDb pipeline and wait until it becomes the current
+-- cut.
+--
+pushCutAndAwait :: CutDb logger -> Cut -> IO ()
+pushCutAndAwait cdb cut = do
+    let cutHashes = cutToCutHashes Nothing cut
+    addCutHashes cdb cutHashes
+    atomically $ do
+        curCut <- _cutStm cdb
+        guard (cutToCutHashes Nothing curCut == cutHashes)
 
 selectHighCuts :: Casify RocksDbTable CutHashes -> Int -> Maybe (CasKeyType CutHashes) -> IO ([CutHashes], CasKeyType CutHashes)
 selectHighCuts cutTable candidateCount maybeMaxCutHeight = do
@@ -359,12 +370,8 @@ singleForkTest rdb d expect step = runResourceT $ do
         let db = cdb ^?! cutDbBlockHeaderDb cid
         let h = genesisBlockHeader cid
         (f0, f1) <- createForks db h
-        let f0Cut = cutToCutHashes Nothing $ unsafeMkCut (HM.singleton cid (last f0))
-        addCutHashes cdb f0Cut
-        atomically $ do
-            curCut <- _cutStm cdb
-            guard (cutToCutHashes Nothing curCut == f0Cut)
-        initialCut <- _cut cdb
+        let initialCut = unsafeMkCut (HM.singleton cid (last f0))
+        pushCutAndAwait cdb initialCut
         let wbhdb = view cutDbWebBlockHeaderDb cdb
         n <- pruneForks logg initialCut wbhdb Prune d
         assertHeaders db f0
@@ -394,10 +401,11 @@ failTest rio n step = withVersion (barebonesTestVersion singletonChainGraph) $ r
         let db = cdb ^?! cutDbBlockHeaderDb cid
         let h = genesisBlockHeader cid
         (f0, _) <- createForks db h
+        pushCutAndAwait cdb $ unsafeMkCut (HM.singleton cid (last f0))
         delHdr db $ f0 !! int n
         initialCut <- _cut cdb
         let wbhdb = view cutDbWebBlockHeaderDb cdb
-        try (pruneForks logg initialCut wbhdb Prune 2) >>= \case
+        try (pruneForks logg initialCut wbhdb ForcePrune 2) >>= \case
             Left (InternalInvariantViolation{}) -> return ()
             Right x -> assertFailure
                 $ "missing expected InternalInvariantViolation"
@@ -417,7 +425,10 @@ testFullGc rdb step = withVersion (barebonesTestVersion singletonChainGraph) $ r
     let h = genesisBlockHeader cid
     liftIO $ do
         (f0, f1) <- createForks db h
-        -- fullGc logger rdb (barebonesTestVersion singletonChainGraph)
+        let initialCut = unsafeMkCut (HM.singleton cid (last f0))
+        pushCutAndAwait cdb initialCut
+        let wbhdb = view cutDbWebBlockHeaderDb cdb
+        _ <- pruneForks logger initialCut wbhdb ForcePrune 0
         assertHeaders db f0
         assertPrunedHeaders db f1
   where

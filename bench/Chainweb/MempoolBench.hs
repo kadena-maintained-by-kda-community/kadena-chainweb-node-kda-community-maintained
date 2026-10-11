@@ -35,6 +35,7 @@ import Chainweb.PayloadProvider (EvaluationCtx(..))
 import Chainweb.Parent
 import Chainweb.MinerReward
 import Chainweb.BlockCreationTime
+import Chainweb.ForkState (ForkNumber(..))
 
 import Pact.Core.Command.Types
 import qualified Pact.Core.Gas as Pact
@@ -54,7 +55,7 @@ inmemCfg = InMem.InMemConfig
     }
 
 v :: ChainwebVersion
-v = instantCpmTestVersion singletonChainGraph
+v = instantCpmTestVersion False singletonChainGraph
 
 setup :: V.Vector Transaction -> IO (NoopNFData (Mempool.MempoolBackend Transaction))
 setup txs = do
@@ -103,7 +104,7 @@ mempoolGetBlockBench :: _ => _
 mempoolGetBlockBench name p bf n = C.bench name
     $ C.perRunEnv (setup (V.take n cmds)) $ \(NoopNFData mp) -> do
     Mempool.mempoolGetBlock mp bf Mempool.noopMempoolPreBlockCheck
-        (EvaluationCtx (Parent $ BlockCreationTime epoch) (Parent nullBlockHash) (Parent $ BlockHeight 0) (MinerReward 0) ())
+        (EvaluationCtx (Parent $ BlockCreationTime epoch) (Parent nullBlockHash) (Parent $ BlockHeight 0) (ForkNumber 0) (MinerReward 0) ())
         >>= p
 
 allPendingTxHashes :: Mempool.MempoolBackend t -> IO [Mempool.TransactionHash]

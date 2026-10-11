@@ -54,6 +54,7 @@ import Data.Traversable
 import Data.Vector qualified as V
 import Ea.Genesis
 import GHC.Exts(the)
+import GHC.Stack
 import Pact.Core.ChainData
 import Pact.Core.Command.Client
 import Pact.Core.Command.Types
@@ -72,9 +73,7 @@ main = do
       [ devnet
       -- , fastnet
       , instantnet
-      , pact53Transitionnet
-      , quirkedPact5Instantnet
-      -- , genCoinV6Payloads
+      , quirkedGasInstantnet
       ]
     putStrLn "Done."
   where
@@ -84,15 +83,19 @@ main = do
       ]
     -- fastnet = mkPayloads [fastTimedCPM0, fastTimedCPMN]
     instantnet = mkPayloads [instantCPM0, instantCPMN]
-    pact53Transitionnet = mkPayloads [pact53TransitionCPM0, pact53TransitionCPMN]
-    quirkedPact5Instantnet = mkPayloads [quirkedPact5InstantCPM0, quirkedPact5InstantCPMN]
+    quirkedGasInstantnet = mkPayloads [quirkedGasInstantCPM0, quirkedGasInstantCPMN]
+
+show_ :: ChainIdRange -> String
+show_ (ChainIdRange n n')
+    | n == n' = "Chain " <> show n
+    | otherwise = "Chains " <> show n <> "-" <> show n'
 
 fullGenesisTag :: Genesis -> Text
 fullGenesisTag (Genesis _ tag cidr _ _ _ _ _) = tag <> T.pack (chainIdRangeTag cidr)
 
 -- | Generate payloads for a traversable of txs
 --
-mkPayloads :: Traversable t => t Genesis -> IO ()
+mkPayloads :: HasCallStack => Traversable t => t Genesis -> IO ()
 mkPayloads = traverse_ (\g -> writePayload g =<< mkPayload g)
 
 writePayload :: Genesis -> Text -> IO ()
@@ -102,7 +105,7 @@ writePayload gen payload = do
 
 -- | Generate a payload for a given list of genesis transactions
 --
-mkPayload :: Genesis -> IO Text
+mkPayload :: HasCallStack => Genesis -> IO Text
 mkPayload gen@(Genesis v _ (ChainIdRange l u) c k a ns cc) = do
     -- printf ("Generating Genesis Payload for %s on " <> show_ cidr <> "...\n") $ show v
     payloadModules <- for [l..u] $ \cid ->
@@ -119,7 +122,7 @@ mkPayload gen@(Genesis v _ (ChainIdRange l u) c k a ns cc) = do
 -- Payload Generation
 ---------------------
 
-genPayloadModule :: HasVersion => Text -> Chainweb.ChainId -> [Pact.Transaction] -> IO Text
+genPayloadModule :: HasCallStack => HasVersion => Text -> Chainweb.ChainId -> [Pact.Transaction] -> IO Text
 genPayloadModule tag cid cwTxs = do
     let logger = genericLogger Warn TIO.putStrLn
     pdb <- newPayloadDb

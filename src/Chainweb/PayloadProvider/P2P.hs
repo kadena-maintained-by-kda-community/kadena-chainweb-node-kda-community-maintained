@@ -187,7 +187,7 @@ newPayloadStore
     -> ([RankedBlockPayloadHash] -> ClientM [Maybe a])
     -> IO (PayloadStore tbl a)
 newPayloadStore mgr logfun payloadDb cli bcli = do
-    payloadTaskQueue <- newEmptyPQueue
+    payloadTaskQueue <- newEmptyPQueue _taskPriority _taskId Nothing
     payloadMemo <- new
     return $! PayloadStore
         { _payloadStoreTable = payloadDb
@@ -375,7 +375,7 @@ getPayloads s candidateStore priority maybeOrigin payloadHashes = do
     traceLogfun :: forall m . LogMessage m => LogLevel -> m -> IO ()
     traceLogfun = _payloadStoreLogFunction s
 
-    taskMsg ks msg = "payload task " <> "batch" <> " @ " <> brief payloadHashes <> ": " <> msg
+    taskMsg _ks msg = "payload task " <> "batch" <> " @ " <> brief payloadHashes <> ": " <> msg
 
     traceLabel subfun =
         "Chainweb.PayloadProvider.P2P.getPayload." <> subfun
