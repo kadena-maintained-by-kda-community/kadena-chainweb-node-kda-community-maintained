@@ -697,7 +697,6 @@ test-suite chainweb-tests
         , async >= 2.2
         , base >= 4.12 && < 5
         , base16-bytestring >= 0.1
-        , base64 >= 2.0
         , byteslice >= 0.2.12
         , bytesmith >= 0.3.10
         , bytestring >= 0.10.12
