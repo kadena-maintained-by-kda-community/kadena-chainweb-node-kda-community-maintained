@@ -271,9 +271,12 @@ module Chainweb.Utils
 , ResponseBodyTooLarge(..)
 ) where
 
+import Chainweb.Utils.Resource
+import Chainweb.Utils.Tuple
+import Chainweb.Utils.UnitPrefixes
+
 import Configuration.Utils hiding (Error, Lens)
 import Control.Concurrent (threadDelay)
-import Control.Concurrent.Async
 import Control.Concurrent.MVar
 import Control.Concurrent.TokenBucket
 import Control.DeepSeq
@@ -285,12 +288,11 @@ import Control.Monad.Cont
 import Control.Monad.IO.Class
 import Control.Monad.Primitive
 import Control.Monad.Reader as Reader
-import Control.Monad.Trans.Resource
 import Data.Aeson.Text (encodeToLazyText)
 import Data.Aeson.Types qualified as Aeson
 import Data.Array.Byte
 import Data.Attoparsec.Text qualified as A
-import Data.Bifunctor
+import Data.Bifunctor (first)
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
@@ -309,7 +311,6 @@ import Data.Functor.Of
 import Data.HashMap.Strict qualified as HM
 import Data.HashSet qualified as HS
 import Data.Hashable
-import Data.IORef
 import Data.Int
 import Data.String (IsString(..))
 import Data.Text qualified as T
@@ -348,49 +349,6 @@ import System.Random.MWC.Probability qualified as Prob
 import System.Timeout qualified as Timeout
 import Text.Printf (printf)
 import Text.Read (readEither)
-
--- -------------------------------------------------------------------------- --
--- SI unit prefixes
-
--- | cf. https://www.nist.gov/pml/owm/metric-si-prefixes
---
-deci, centi, milli, micro, nano, pico, femto, atto, zepto, yocto :: Fractional a => a
-deci = 10 ^^ (-1 :: Int)
-centi = 10 ^^ (-2 :: Int)
-milli = 10 ^^ (-3 :: Int)
-micro = 10 ^^ (-6 :: Int)
-nano = 10 ^^ (-9 :: Int)
-pico = 10 ^^ (-12 :: Int)
-femto = 10 ^^ (-15 :: Int)
-atto = 10 ^^ (-18 :: Int)
-zepto = 10 ^^ (-21 :: Int)
-yocto = 10 ^^ (-24 :: Int)
-
--- | cf. https://www.nist.gov/pml/owm/metric-si-prefixes
---
-deka, hecto, kilo, mega, giga, tera, peta, exa, zetta, yotta :: Num a => a
-deka = 10 ^ (1 :: Int)
-hecto = 10 ^ (2 :: Int)
-kilo = 10 ^ (3 :: Int)
-mega = 10 ^ (6 :: Int)
-giga = 10 ^ (9 :: Int)
-tera = 10 ^ (12 :: Int)
-peta = 10 ^ (15 :: Int)
-exa = 10 ^ (18 :: Int)
-zetta = 10 ^ (21 :: Int)
-yotta = 10 ^ (24 :: Int)
-
--- | IEC 60027-X unit prefixes for binary bases.
---
--- cf. https://www.nist.gov/pml/special-publication-811/nist-guide-si-appendix-d-bibliography#05
---
-kibi, mebi, gibi, tebi, pebi, exbi:: Num a => a
-kibi = 1024 ^ (1 :: Int)
-mebi = 1024 ^ (2 :: Int)
-gibi = 1024 ^ (3 :: Int)
-tebi = 1024 ^ (4 :: Int)
-pebi = 1024 ^ (5 :: Int)
-exbi = 1024 ^ (6 :: Int)
 
 -- -------------------------------------------------------------------------- --
 -- Misc
@@ -1378,156 +1336,6 @@ data Codec t = Codec
     { codecEncode :: t -> ByteString
     , codecDecode :: ByteString -> Either String t
     }
-
--- -------------------------------------------------------------------------- --
--- Resource Management
-
--- | Concurrently initializes resources.
---
--- This function is a bit of a hack that allows allocating several resources
--- concurrently and providing them to a single inner computation.
---
-allocateConcurrently
-    :: forall a t
-    . Traversable t
-    => t (ResourceT IO a)
-    -> ResourceT IO (t a)
-allocateConcurrently mkResources = do
-    (_, resourcesAndInternalStates) <- allocate (
-        -- threads inherit masking state, and allocate runs initializers masked.
-        forConcurrently mkResources $ \mkResource -> do
-            internalState <- createInternalState
-            -- runInternalState doesn't actually clean up the resources.
-            resource <- runInternalState mkResource internalState
-            return (resource, internalState)
-        )
-        -- likewise finalizers are run masked.
-        (mapConcurrently_ (closeInternalState . snd))
-    return $ fst <$> resourcesAndInternalStates
-
--- | Run an async IO action, link it back to the main thread, and return
--- the async result
---
-withLink :: forall a. IO a -> IO (Async a)
-withLink act = do
-  a <- async act
-  link a
-  return a
-
--- | Spawn a thread to do the input action and kill it on exit.
-withAsyncR :: IO a -> ResourceT IO (Async a)
-withAsyncR act = snd <$> allocate (async act) uninterruptibleCancel
-
--- | Use a ResourceT-allocated resource from @bracket@.
-resourceToBracket
-    :: ResourceT IO a
-    -> (IO (a, InternalState)
-        , (a, InternalState) -> IO ())
-resourceToBracket res = do
-    let prime = do
-            r <- res
-            uninterruptibleMask_ $ do
-                s <- getInternalState
-                releaseMap <- liftIO $ readIORef s
-                s' <- createInternalState
-                liftIO $ writeIORef s =<< readIORef s'
-                liftIO $ writeIORef s' releaseMap
-                return (r, s')
-
-    (runResourceT prime, \(_, s) -> closeInternalState s)
-
--- | Like `sequence` for IO but concurrent
-concurrentlies :: forall a. [IO a] -> IO [a]
-concurrentlies = runConcurrently . traverse Concurrently
-
--- | Like `sequence_` for IO but concurrent
-concurrentlies_ :: forall a. [IO a] -> IO ()
-concurrentlies_ = void . concurrentlies
-
--- -------------------------------------------------------------------------- --
--- Tuples
-
-thd :: (a,b,c) -> c
-thd (_,_,c) = c
-{-# INLINE thd #-}
-
--- -------------------------------------------------------------------------- --
--- Strict Tuple
-
-data T2 a b = T2 !a !b
-    deriving (Show, Eq, Ord, Generic, NFData, Functor, Foldable, Traversable)
-
-instance (Semigroup a, Semigroup b) => Semigroup (T2 a b) where
-    T2 a b <> T2 a' b' = T2 (a <> a') (b <> b')
-
-instance (Monoid a, Monoid b) => Monoid (T2 a b) where
-    mappend = (<>)
-    mempty = T2 mempty mempty
-
-instance Bifunctor T2 where
-    bimap f g (T2 a b) =  T2 (f a) (g b)
-    {-# INLINE bimap #-}
-instance Field1 (T2 a b) (T2 x b) a x where
-    _1 = lens (\(T2 a _b) -> a) (\(T2 _a b) x -> T2 x b)
-instance Field2 (T2 a b) (T2 a x) b x where
-    _2 = lens (\(T2 _a b) -> b) (\(T2 a _b) x -> T2 a x)
-
-data T3 a b c = T3 !a !b !c
-    deriving (Show, Eq, Ord, Generic, NFData, Functor)
-
-instance Bifunctor (T3 a) where
-    bimap f g (T3 a b c) =  T3 a (f b) (g c)
-    {-# INLINE bimap #-}
-instance Field1 (T3 a b c) (T3 x b c) a x where
-    _1 = lens (\(T3 a _b _c) -> a) (\(T3 _a b c) x -> T3 x b c)
-instance Field2 (T3 a b c) (T3 a x c) b x where
-    _2 = lens (\(T3 _a b _c) -> b) (\(T3 a _b c) x -> T3 a x c)
-instance Field3 (T3 a b c) (T3 a b x) c x where
-    _3 = lens (\(T3 _a _b c) -> c) (\(T3 a b _c) x -> T3 a b x)
-
-data T4 a b c d = T4 !a !b !c !d
-    deriving (Show, Eq, Ord, Generic, NFData, Functor)
-
-instance Field1 (T4 a b c d) (T4 x b c d) a x where
-    _1 = lens (\(T4 a _b _c _d) -> a) (\(T4 _a b c d) x -> T4 x b c d)
-instance Field2 (T4 a b c d) (T4 a x c d) b x where
-    _2 = lens (\(T4 _a b _c _d) -> b) (\(T4 a _b c d) x -> T4 a x c d)
-instance Field3 (T4 a b c d) (T4 a b x d) c x where
-    _3 = lens (\(T4 _a _b c _d) -> c) (\(T4 a b _c d) x -> T4 a b x d)
-instance Field4 (T4 a b c d) (T4 a b c x) d x where
-    _4 = lens (\(T4 _a _b _c d) -> d) (\(T4 a b c _d) x -> T4 a b c x)
-
-sfst :: T2 a b -> a
-sfst (T2 a _) = a
-{-# INLINE sfst #-}
-
-ssnd :: T2 a b -> b
-ssnd (T2 _ b) = b
-{-# INLINE ssnd #-}
-
-scurry :: (T2 a b -> c) -> a -> b -> c
-scurry f a b = f (T2 a b)
-{-# INLINE scurry #-}
-
-suncurry :: (a -> b -> c) -> T2 a b -> c
-suncurry k (T2 a b) = k a b
-{-# INLINE suncurry #-}
-
-uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
-uncurry3 k (a, b, c) = k a b c
-{-# INLINE uncurry3 #-}
-
-suncurry3 :: (a -> b -> c -> d) -> T3 a b c -> d
-suncurry3 k (T3 a b c) = k a b c
-{-# INLINE suncurry3 #-}
-
-_T2 :: Iso (T2 a b) (T2 s t) (a,b) (s,t)
-_T2 = iso (\(T2 a b) -> (a,b)) (uncurry T2)
-{-# INLINE _T2 #-}
-
-_T3 :: Iso (T3 a b c) (T3 s t u) (a,b,c) (s,t,u)
-_T3 = iso (\(T3 a b c) -> (a,b,c)) (\(a,b,c) -> T3 a b c)
-{-# INLINE _T3 #-}
 
 -- -------------------------------------------------------------------------- --
 -- Approximate thread delays
