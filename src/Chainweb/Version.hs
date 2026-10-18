@@ -70,6 +70,7 @@ module Chainweb.Version
     , versionGraphs
     , versionHeaderBaseSizeBytes
     , versionMaxBlockGasLimit
+    , versionInitialGasModel
     , versionSpvProofRootValidWindow
     , versionName
     , versionWindow
@@ -184,6 +185,7 @@ import Chainweb.MerkleUniverse
 import Chainweb.Payload
 import Chainweb.Pact4.Transaction qualified as Pact4
 import Chainweb.Pact5.Transaction qualified as Pact5
+import Chainweb.Pact5.InitialGasModel
 import Chainweb.ForkState
 import Chainweb.Utils
 import Chainweb.Utils.Rule
@@ -233,6 +235,7 @@ data Fork
     | Chainweb230Pact
     | Chainweb231Pact
     | Chainweb31
+    | Chainweb32
     | MigratePlatformShare
     -- always add new forks at the end, not in the middle of the constructors.
     deriving stock (Bounded, Generic, Eq, Enum, Ord, Show)
@@ -274,6 +277,7 @@ instance HasTextRepresentation Fork where
     toText Chainweb230Pact = "chainweb230Pact"
     toText Chainweb231Pact = "chainweb231Pact"
     toText Chainweb31 = "Chainweb31"
+    toText Chainweb32 = "Chainweb32"
     toText MigratePlatformShare = "migratePlatformShare"
 
     fromText "slowEpoch" = return SlowEpoch
@@ -311,6 +315,7 @@ instance HasTextRepresentation Fork where
     fromText "chainweb230Pact" = return Chainweb230Pact
     fromText "chainweb231Pact" = return Chainweb231Pact
     fromText "Chainweb31" = return Chainweb31
+    fromText "Chainweb32" = return Chainweb32
     fromText "migratePlatformShare" = return MigratePlatformShare
     fromText t = throwM . TextFormatException $ "Unknown Chainweb fork: " <> t
 
@@ -545,6 +550,8 @@ data ChainwebVersion
     , _versionSpvProofRootValidWindow :: Rule ForkHeight (Maybe Word64)
         -- ^ The minimum number of block headers a chainweb node should
         -- retain in its history at all times.
+    , _versionInitialGasModel :: ChainMap (Rule ForkHeight (InitialGasModel))
+        -- ^ The initial gas model used for Pact 5 transactions processing
     , _versionBootstraps :: [PeerInfo]
         -- ^ The locations of the bootstrap peers.
     , _versionGenesis :: VersionGenesis

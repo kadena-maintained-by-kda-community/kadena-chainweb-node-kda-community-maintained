@@ -86,6 +86,7 @@ import Pact.Core.Hash
 import Pact.Core.Info
 import Pact.Core.Names
 import Pact.Core.Namespace
+import Pact.Core.Scheme (defPPKScheme)
 import Pact.Core.PactValue
 import Pact.Core.Persistence.Types hiding (GasM(..))
 import Pact.Core.Persistence.Utils (ignoreGas)
@@ -103,11 +104,13 @@ import Chainweb.BlockCreationTime
 import Chainweb.BlockHash
 import Chainweb.BlockHeader
 import Chainweb.BlockHeight
+import Chainweb.ForkState
 import Chainweb.Logger
 import Chainweb.Miner.Pact
 import Chainweb.Pact.Types
 import Chainweb.Pact5.Templates
 import Chainweb.Pact5.Types
+import Chainweb.Pact5.InitialGasModel
 
 import Chainweb.Time
 import Chainweb.Pact5.Transaction
@@ -171,6 +174,13 @@ chargeGas info gasArgs = do
   gasEnv <- view txEnvGasEnv
   either throwError return =<<
     liftIO (chargeGasArgsM gasEnv info [] gasArgs)
+
+
+-- Create a Set of Flags from a list of default flags (unconditional)
+-- and a list of guarded flags (context-dependent).
+aggregateFlags :: TxContext -> [ExecutionFlag] -> [TxContext -> Set ExecutionFlag] -> Set ExecutionFlag
+aggregateFlags ctx defaultFlags guardedFlags = Set.fromList defaultFlags `Set.union` foldMap ($ ctx) guardedFlags
+
 
 -- run verifiers
 -- nasty... perhaps later convert verifier plugins to use GasM instead of tracking "gas remaining"
@@ -296,7 +306,7 @@ applyLocal logger maybeGasLogger coreDb txCtx spvSupport cmd = do
         }
 
   where
-  defaultFlags = S.fromList
+  localFlags = aggregateFlags txCtx
     [ FlagDisableRuntimeRTC
     , FlagEnforceKeyFormats
     -- Note: this is currently not conditional
@@ -305,11 +315,12 @@ applyLocal logger maybeGasLogger coreDb txCtx spvSupport cmd = do
     , FlagAllowReadInLocal
     , FlagRequireKeysetNs
     ]
-  localFlags = Set.unions
-    [ defaultFlags
-    , guardDisablePact51Flags txCtx
-    , guardDisablePact52And53Flags txCtx
-    , guardDisablePact54Flags txCtx]
+
+    [ guardDisablePact51Flags
+    , guardDisablePact52And53Flags
+    , guardDisablePact54Flags
+    , guardDisablePact54FixFlags
+    ]
 
 -- | The main entry point to executing transactions. From here,
 -- 'applyCmd' assembles the command environment for a command,
@@ -339,17 +350,17 @@ applyCmd
     -> IO (Either Pact5GasPurchaseFailure (CommandResult [TxLog ByteString] (Pact5.PactError Info)))
 applyCmd logger maybeGasLogger db txCtx txIdxInBlock spv initialGas cmd = do
   logDebug_ logger $ "applyCmd: " <> sshow (_cmdHash cmd)
-  let defaultFlags = Set.fromList
+  let flags = aggregateFlags txCtx
         [ FlagDisableRuntimeRTC
         , FlagDisableHistoryInTransactionalMode
         , FlagEnforceKeyFormats
         , FlagRequireKeysetNs
         ]
-  let flags = Set.unions
-              [ defaultFlags
-              , guardDisablePact51Flags txCtx
-              , guardDisablePact52And53Flags txCtx
-              , guardDisablePact54Flags txCtx]
+        [ guardDisablePact51Flags
+        , guardDisablePact52And53Flags
+        , guardDisablePact54Flags
+        , guardDisablePact54FixFlags
+        ]
 
   let gasLogsEnabled = maybe GasLogsDisabled (const GasLogsEnabled) maybeGasLogger
   gasEnv <- mkTableGasEnv (MilliGasLimit $ gasToMilliGas $ gasLimit ^. _GasLimit) gasLogsEnabled
@@ -485,8 +496,7 @@ applyCoinbase logger db reward txCtx = do
   freeGasEnv <- mkFreeGasEnv GasLogsDisabled
   let
     (coinbaseTerm, coinbaseData) = mkCoinbaseTerm mid mks reward
-    defaultFlags = Set.singleton FlagDisableRuntimeRTC
-    flags = Set.unions [defaultFlags, guardDisablePact52And53Flags txCtx]
+    flags = aggregateFlags txCtx [FlagDisableRuntimeRTC] [guardDisablePact52And53Flags]
   eCoinbaseTxResult <-
     evalExecTerm Transactional
       db noSPVSupport freeGasEnv flags SimpleNamespacePolicy
@@ -607,8 +617,7 @@ runGenesisPayload logger db spv ctx cmd = do
   let txEnv = TransactionEnv logger gasEnv
   -- Todo gas logs
   freeGasEnv <- mkFreeGasEnv GasLogsDisabled
-  let defaultFlags = Set.fromList [FlagDisableRuntimeRTC]
-      flags = Set.unions [defaultFlags, guardDisablePact52And53Flags ctx, guardDisablePact54Flags ctx]
+  let flags = aggregateFlags ctx [FlagDisableRuntimeRTC] [guardDisablePact52And53Flags, guardDisablePact54Flags]
   runExceptT
     (runReaderT
       (runTransactionM
@@ -977,33 +986,25 @@ redeemGas logger db txCtx gasUsed maybeFundTxPactId cmd
 -- -- Utilities
 
 -- | Initial gas charged for transaction size
---   ignoring the size of a continuation proof, if present
---
-initialGasOf :: ChainwebVersion -> V.ChainId -> BlockHeight -> PayloadWithText meta ParsedCode -> Gas
-initialGasOf v cid bh payload = Gas gasFee
+initialGasOf :: ChainwebVersion -> V.ChainId -> BlockHeight -> ForkNumber -> Transaction -> Gas
+initialGasOf v cid bh fn tx = Gas $ ceiling $ sizeCost + sizePenaltyCost + sigsCost
   where
-    feePerByte :: Rational = 0.01
+    model = activeInitialGasModel v cid fn bh
+    proofSize = case tx ^. cmdPayload . payloadObj . pPayload of
+                  Continuation (ContMsg _ _ _ _ (Just (ContProof p))) -> B.length p
+                  _ -> 0
 
-    contProofSize =
-      case payload ^. payloadObj . pPayload of
-        Continuation (ContMsg _ _ _ _ (Just (ContProof p))) -> B.length p
-        _ -> 0
-    txSize
-      | chainweb31 v cid bh = SB.length (payload ^. payloadBytes)
-      | otherwise = SB.length (payload ^. payloadBytes) - contProofSize
+    rawSize = SB.length (tx ^. cmdPayload . payloadBytes) - proofSize
+    sigsSize = sum $ map (B.length . J.encodeStrict) $ tx ^. cmdSigs
 
-    costPerByte = fromIntegral txSize * feePerByte
-    sizePenalty = txSizeAccelerationFee costPerByte
-    gasFee = ceiling (costPerByte + sizePenalty)
-{-# INLINE initialGasOf #-}
+    sizeCost = model ^. feePerByte * ( model ^. rawPayloadSizeFactor * fromIntegral rawSize
+                                     + model ^. proofSizeFactor      * fromIntegral proofSize
+                                     + model ^. signatureSizeFactor  * fromIntegral sigsSize)
+    sizePenaltyCost  = (model ^. sizePenalty) sizeCost
 
-txSizeAccelerationFee :: Rational -> Rational
-txSizeAccelerationFee costPerByte = total
-  where
-    total = (costPerByte / bytePenalty) ^ power
-    bytePenalty = 512
-    power :: Integer = 7
-{-# INLINE txSizeAccelerationFee #-}
+    sigsCost = sum $ map ((model ^. signatureCost) . fromMaybe defPPKScheme . view siScheme)
+                  $ tx ^. cmdPayload . payloadObj . pSigners
+
 
 -- | Chainweb's namespace policy for ordinary transactions.
 -- Doesn't allow installing modules in the root namespace.
@@ -1057,4 +1058,9 @@ guardDisablePact52And53Flags txCtx
 guardDisablePact54Flags :: TxContext -> Set ExecutionFlag
 guardDisablePact54Flags txCtx
   | guardCtx chainweb231Pact txCtx = Set.empty
-  | otherwise = Set.fromList [FlagDisablePact54]
+  | otherwise = Set.singleton FlagDisablePact54
+
+guardDisablePact54FixFlags :: TxContext -> Set ExecutionFlag
+guardDisablePact54FixFlags txCtx
+  | guardCtx' chainweb32 txCtx = Set.empty
+  | otherwise = Set.singleton FlagDisablePact54Fix

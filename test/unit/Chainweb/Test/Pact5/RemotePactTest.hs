@@ -93,7 +93,7 @@ import Pact.Core.ChainData (TxCreationTime(..))
 import Pact.Core.Command.Crypto (signEd25519, exportEd25519Signature, importEd25519KeyPair, PrivateKeyBS (..))
 import Pact.Core.Command.RPC (ContMsg (..))
 import Pact.Core.Command.Server qualified as Pact5
-import Pact.Core.Command.Types
+import Pact.Core.Command.Types hiding (ChainId)
 import Pact.Core.DefPacts.Types
 import Pact.Core.Errors
 import Pact.Core.Gas.Types
@@ -346,7 +346,7 @@ crosschainTest baseRdb step = runResourceT $ do
                         , P.fun _peName ? P.equals "X_RESUME"
                         , P.succeed
                         ]
-                    , P.fun _crGas ? P.equals (Gas 234)
+                    , P.fun _crGas ? P.equals (Gas 256)
                     ]
                 , P.match _Just ? P.fun _crResult ? P.match _PactResultErr ? P.fun _peMsg ? P.fun _boundedText
                     ? P.equals ("Requested defpact execution already completed for defpact id: " <> T.take 20 (renderDefPactId $ _peDefPactId cont) <> "...")

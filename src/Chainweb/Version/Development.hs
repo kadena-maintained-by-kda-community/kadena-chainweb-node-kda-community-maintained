@@ -12,6 +12,7 @@ import qualified Data.Set as Set
 import Chainweb.BlockCreationTime
 import Chainweb.ChainId
 import Chainweb.Difficulty
+import Chainweb.Pact5.InitialGasModel
 import Chainweb.Graph
 import Chainweb.Time
 import Chainweb.Utils
@@ -53,6 +54,7 @@ devnet = ChainwebVersion
     -- defaultChainwebConfiguration._configBlockGasLimit
     , _versionMaxBlockGasLimit = Bottom (minBound, Nothing)
     , _versionSpvProofRootValidWindow = Bottom (minBound, Nothing)
+    , _versionInitialGasModel = AllChains $  Bottom (minBound, post32GasModel)
     , _versionCheats = VersionCheats
         { _disablePow = True
         , _fakeFirstEpochStart = True
@@ -65,6 +67,6 @@ devnet = ChainwebVersion
     , _versionVerifierPluginNames = AllChains $ Bottom
         (minBound, Set.fromList $ map VerifierName ["hyperlane_v3_message", "allow", "signed_list"])
     , _versionQuirks = noQuirks
-    , _versionForkNumber = 0
+    , _versionForkNumber = 1
     , _versionForkVoteCastingLength = 120 * 119 -- 5 days
     }
