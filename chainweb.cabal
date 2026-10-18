@@ -380,7 +380,7 @@ library
         , attoparsec >= 0.13
         , base >= 4.12 && < 5
         , base16-bytestring >= 0.1
-        , base64-bytestring-kadena == 0.1
+        , base64 >= 2.0
         , binary >= 0.8
         , bytestring >= 0.10.12
         , case-insensitive >= 1.2
@@ -697,7 +697,7 @@ test-suite chainweb-tests
         , async >= 2.2
         , base >= 4.12 && < 5
         , base16-bytestring >= 0.1
-        , base64-bytestring-kadena == 0.1
+        , base64 >= 2.0
         , byteslice >= 0.2.12
         , bytesmith >= 0.3.10
         , bytestring >= 0.10.12
