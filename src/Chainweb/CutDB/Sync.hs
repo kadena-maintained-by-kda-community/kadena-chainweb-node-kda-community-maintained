@@ -15,7 +15,8 @@
 -- network.
 --
 module Chainweb.CutDB.Sync
-( syncSession
+( catchupStepSize
+, syncSession
 ) where
 
 import Control.Concurrent.Async
