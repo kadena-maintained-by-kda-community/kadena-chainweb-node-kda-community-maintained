@@ -61,6 +61,7 @@ module Chainweb.Chainweb
 , chainwebConfig
 , chainwebServiceSocket
 , chainwebBackup
+, chainwebScheduler
 , chainwebManager
 , StartedChainweb(..)
 , ChainwebStatus(..)
@@ -155,6 +156,7 @@ import Chainweb.Pact.RestAPI.Server (PactServerData(..))
 import Chainweb.Pact.Transaction qualified as Pact
 import Chainweb.RestAPI
 import Chainweb.RestAPI.NetworkID
+import Chainweb.Scheduler (Scheduler, scheduleEvery)
 import Chainweb.Storage.Table.RocksDB
 import Chainweb.Utils
 import Chainweb.Utils.RequestLog
@@ -184,6 +186,7 @@ data Chainweb logger = Chainweb
     , _chainwebConfig :: !ChainwebConfiguration
     , _chainwebServiceSocket :: !(Port, Socket)
     , _chainwebBackup :: !(BackupEnv logger)
+    , _chainwebScheduler :: !Scheduler
     }
 
 makeLenses ''Chainweb
@@ -198,12 +201,13 @@ withChainweb
     . Logger logger
     => ChainwebConfiguration
     -> logger
+    -> Scheduler
     -> RocksDb
     -> FilePath
     -> FilePath
     -> (StartedChainweb logger -> IO ())
     -> IO ()
-withChainweb c logger rocksDb defaultPactDbDir backupDir inner =
+withChainweb c logger sched rocksDb defaultPactDbDir backupDir inner =
     withVersion (c ^. configChainwebVersion) $
         withPeerResources (view configP2p confWithBootstraps) logger $ \logger' peerRes -> do
             withSocket serviceApiPort serviceApiHost $ \serviceSock -> do
@@ -215,6 +219,7 @@ withChainweb c logger rocksDb defaultPactDbDir backupDir inner =
                     logger'
                     peerRes
                     serviceSock
+                    sched
                     rocksDb
                     defaultPactDbDir
                     backupDir
@@ -262,28 +267,29 @@ withChainwebInternal
     -> logger
     -> PeerResources logger
     -> (Port, Socket)
+    -> Scheduler
     -> RocksDb
     -> FilePath
     -> FilePath
     -> (StartedChainweb logger -> IO ())
     -> IO ()
-withChainwebInternal conf logger peerRes serviceSock rocksDb defaultPactDbDir backupDir inner = do
+withChainwebInternal conf logger peerRes serviceSock sched rocksDb defaultPactDbDir backupDir inner = do
     logFunctionJson logger Info InitializingChainResources
     txFailuresCounter <- Counter.newCounter @"txFailures"
     let monitorTxFailuresCounter =
-            runForever (logFunctionText logger) "monitor txFailuresCounter" $ do
-                approximateThreadDelay 60_000_000 {- 1 minute -}
+            scheduleEvery sched "monitor txFailuresCounter" 60_000_000 {- 1 minute -} $ do
                 Counter.logFunctionCounter logger Info . (:[]) =<<
                     Counter.roll txFailuresCounter
     logg Debug "start initializing chain resources"
     logFunctionText logger Info $ "opening pact db in directory " <> sshow defaultPactDbDir
     runResourceT $ do
-        _ <- withAsyncR monitorTxFailuresCounter
+        liftIO monitorTxFailuresCounter
         allChainResources <- allocateConcurrently
             (tabulateChains $ \cid ->
             -- initialize chains concurrently
             -- Initialize all chain resources, including payload providers
                 withChainResources
+                    sched
                     (chainLogger cid)
                     cid
                     rocksDb
@@ -372,7 +378,8 @@ withChainwebInternal conf logger peerRes serviceSock rocksDb defaultPactDbDir ba
                 logg Info "no cut resources, chainweb will not continue"
                 inner (RewoundToCut initialCut)
             Right cutResources -> do
-                _ <- withAsyncR $ PruneForks.pruneForksJob
+                liftIO $ PruneForks.pruneForksJob
+                    sched
                     logger
                     (cutResources ^. cutResCutDb . cut)
                     (cutResources ^. cutResCutDb . cutDbWebBlockHeaderDb)
@@ -478,6 +485,7 @@ withChainwebInternal conf logger peerRes serviceSock rocksDb defaultPactDbDir ba
                                             , _backupChainIds = cids
                                             , _backupLogger = backupLogger
                                             }
+                                        , _chainwebScheduler = sched
                                         }
 
     -- synchronizePactDb :: HM.HashMap ChainId (ChainResources logger) -> Cut -> IO ()
@@ -586,10 +594,13 @@ runChainweb cw nowServing = do
             mkValidationMiddleware
         else return id
 
+    clientClosedConnectionsCounter <- Counter.newCounter
+    monitorConnectionsClosedByClient clientClosedConnectionsCounter
+
     concurrentlies_
 
         -- 1. Start serving P2P Rest API
-        [ (if tls then serve else servePlain)
+        [ (\mw -> (if tls then serve else servePlain) clientClosedConnectionsCounter mw)
             $ httpLog
             . throttle (_chainwebPutPeerThrottler cw)
             . throttle (_chainwebMempoolThrottler cw)
@@ -688,8 +699,7 @@ runChainweb cw nowServing = do
 
     monitorConnectionsClosedByClient :: Counter.Counter "clientClosedConnections" -> IO ()
     monitorConnectionsClosedByClient clientClosedConnectionsCounter =
-        runForever logg "ConnectionClosedByClient.counter" $ do
-            approximateThreadDelay 60_000_000 {- 1 minute -}
+        scheduleEvery (_chainwebScheduler cw) "ConnectionClosedByClient.counter" 60_000_000 {- 1 minute -} $ do
             Counter.logFunctionCounter (_chainwebLogger cw) Info . (:[]) =<<
                 Counter.roll clientClosedConnectionsCounter
 
@@ -706,33 +716,26 @@ runChainweb cw nowServing = do
             <> payloadP2pPeersToServe chains
         }
 
-    serve :: Middleware -> IO ()
-    serve mw = do
-        clientClosedConnectionsCounter <- Counter.newCounter
-        concurrently_
-            (serveChainwebSocketTls
-                (serverSettings clientClosedConnectionsCounter)
-                (_peerCertificateChain $ _peerResPeer $ _chainwebPeer cw)
-                (_peerKey $ _peerResPeer $ _chainwebPeer cw)
-                (_peerResSocket $ _chainwebPeer cw)
-                (_chainwebConfig cw)
-                chainwebServerDbs
-                mw)
-            (monitorConnectionsClosedByClient clientClosedConnectionsCounter)
+    serve :: Counter.Counter "clientClosedConnections" -> Middleware -> IO ()
+    serve clientClosedConnectionsCounter mw =
+        serveChainwebSocketTls
+            (serverSettings clientClosedConnectionsCounter)
+            (_peerCertificateChain $ _peerResPeer $ _chainwebPeer cw)
+            (_peerKey $ _peerResPeer $ _chainwebPeer cw)
+            (_peerResSocket $ _chainwebPeer cw)
+            (_chainwebConfig cw)
+            chainwebServerDbs
+            mw
 
     -- serve without tls
-    servePlain :: Middleware -> IO ()
-    servePlain mw = do
-        clientClosedConnectionsCounter <- Counter.newCounter
-        concurrently_
-            (serveChainwebSocket
-                (serverSettings clientClosedConnectionsCounter)
-                (_peerResSocket $ _chainwebPeer cw)
-                (_chainwebConfig cw)
-                chainwebServerDbs
-                mw
-            )
-            (monitorConnectionsClosedByClient clientClosedConnectionsCounter)
+    servePlain :: Counter.Counter "clientClosedConnections" -> Middleware -> IO ()
+    servePlain clientClosedConnectionsCounter mw =
+        serveChainwebSocket
+            (serverSettings clientClosedConnectionsCounter)
+            (_peerResSocket $ _chainwebPeer cw)
+            (_chainwebConfig cw)
+            chainwebServerDbs
+            mw
 
     -- Request size limit for the service API
     --

@@ -79,7 +79,7 @@ import Chainweb.WebBlockHeaderDB
 import Chainweb.Cut
 import Chainweb.CutDB
 import Control.Monad.Cont
-import Data.Void (Void)
+import Chainweb.Scheduler (Scheduler, scheduleEvery)
 import Data.Foldable
 import Data.Functor ((<&>))
 import Data.Ord
@@ -120,17 +120,17 @@ instance HasTextRepresentation DoPrune where
 pruneForksJob
     :: HasVersion
     => Logger logger
-    => logger
+    => Scheduler
+    -> logger
     -> IO Cut
     -> WebBlockHeaderDb
     -> DoPrune
     -> Natural
-    -> IO Void
-pruneForksJob logger getCut wbhdb doPrune depth = do
-    runForever (logFunction logger) "prune_forks" $ do
+    -> IO ()
+pruneForksJob sched logger getCut wbhdb doPrune depth =
+    scheduleEvery sched "prune_forks" (1_000_000 * 60 * 60) $ do
         initialCut <- getCut
         void $ pruneForks logger initialCut wbhdb doPrune depth
-        threadDelay (1_000_000 * 60 * 60)
 
 -- | Prunes most block headers from forks that are older than the given number
 -- of blocks.

@@ -56,6 +56,7 @@ import Control.Exception
 import Control.Lens hiding ((.=))
 import Control.Monad
 import Control.Monad.Managed
+import Control.Monad.Trans.Resource (runResourceT)
 
 import Data.Maybe
 import Data.Text (Text)
@@ -95,6 +96,7 @@ import Chainweb.Pact.Mempool.InMemTypes (MempoolStats(..))
 import Chainweb.Pact.Backend.DbCache (DbCacheStats)
 import Chainweb.Pact.RestAPI.Server (PactCmdLog(..))
 import Chainweb.Pact.Types
+import Chainweb.Scheduler (Scheduler, scheduleEvery, withScheduler)
 import Chainweb.Time
 import Chainweb.Utils
 import Chainweb.Utils.RequestLog
@@ -181,31 +183,20 @@ getDbBaseDir conf = case _nodeConfigDatabaseDirectory conf of
 -- -------------------------------------------------------------------------- --
 -- Monitors
 
--- | Run a monitor function with a logger forever. If the monitor function exist
--- or fails the event is logged and the function is restarted.
+-- | Schedule a monitor action on the shared background job scheduler. The
+-- first run happens one interval after the node started.
 --
--- In order to prevent the function to spin in case of a persistent failure
--- cause, only 10 immediate restart are allowed. After that restart is throttled
--- to at most one restart every 10 seconds.
---
-runMonitorLoop :: Logger logger => Text -> logger -> IO () -> IO ()
-runMonitorLoop actionLabel logger = runForeverThrottled
-    (logFunction logger)
-    actionLabel
-    10 -- 10 bursts in case of failure
-    (10 * mega) -- allow restart every 10 seconds in case of failure
-
 runCutMonitor
     :: HasVersion
     => Logger logger
-    => logger
+    => Scheduler
+    -> logger
     -> CutDb logger
     -> IO ()
-runCutMonitor logger db = L.withLoggerLabel ("component", "cut-monitor") logger $ \l ->
-    runMonitorLoop "ChainwebNode.runCutMonitor" l $ do
+runCutMonitor sched logger db = L.withLoggerLabel ("component", "cut-monitor") logger $ \l ->
+    scheduleEvery sched "ChainwebNode.runCutMonitor" 15_000_000 $ do
         logFunctionJson l Info . cutToCutHashes Nothing
             =<< _cut db
-        threadDelay 15_000_000
 
 data BlockUpdate = BlockUpdate
     { _blockUpdateBlockHeader :: !(ObjectEncoded BlockHeader)
@@ -260,43 +251,40 @@ deriving instance NFData RTSStats
 deriving instance ToJSON GCDetails
 deriving instance ToJSON RTSStats
 
-runRtsMonitor :: Logger logger => logger -> IO ()
-runRtsMonitor logger = L.withLoggerLabel ("component", "rts-monitor") logger go
+runRtsMonitor :: Logger logger => Scheduler -> logger -> IO ()
+runRtsMonitor sched logger = L.withLoggerLabel ("component", "rts-monitor") logger go
   where
     go l = getRTSStatsEnabled >>= \case
         False -> do
             logFunctionText l Warn "RTS Stats isn't enabled. Run with '+RTS -T' to enable it."
         True -> do
-            runMonitorLoop "Chainweb.Node.runRtsMonitor" l $ do
+            scheduleEvery sched "Chainweb.Node.runRtsMonitor" 60_000_000 $ do
                 logFunctionText l Debug "logging RTS stats"
                 stats <- getRTSStats
                 logFunctionJson logger Info stats
-                approximateThreadDelay 60_000_000 {- 1 minute -}
 
-runQueueMonitor :: Logger logger => logger -> CutDb logger -> IO ()
-runQueueMonitor logger cutDb = L.withLoggerLabel ("component", "queue-monitor") logger go
+runQueueMonitor :: Logger logger => Scheduler -> logger -> CutDb logger -> IO ()
+runQueueMonitor sched logger cutDb = L.withLoggerLabel ("component", "queue-monitor") logger go
   where
     go l = do
-        runMonitorLoop "ChainwebNode.runQueueMonitor" l $ do
+        scheduleEvery sched "ChainwebNode.runQueueMonitor" 60_000_000 $ do
             logFunctionText l Debug "logging cut queue stats"
             stats <- getQueueStats cutDb
             logFunctionJson logger Info stats
-            approximateThreadDelay 60_000_000 {- 1 minute -}
 
 data DbStats = DbStats
     { dbStatsName :: !Text
     , dbStatsSize :: !Integer
     } deriving (Generic, NFData, ToJSON)
 
-runDatabaseMonitor :: Logger logger => logger -> FilePath -> FilePath -> IO ()
-runDatabaseMonitor logger rocksDbDir pactDbDir = L.withLoggerLabel ("component", "database-monitor") logger go
+runDatabaseMonitor :: Logger logger => Scheduler -> logger -> FilePath -> FilePath -> IO ()
+runDatabaseMonitor sched logger rocksDbDir pactDbDir = L.withLoggerLabel ("component", "database-monitor") logger go
   where
     go l = do
-        runMonitorLoop "ChainwebNode.runDatabaseMonitor" l $ do
+        scheduleEvery sched "ChainwebNode.runDatabaseMonitor" 1_200_000_000 {- 20 minutes -} $ do
             logFunctionText l Debug "logging database stats"
             logFunctionJson l Info . DbStats "rocksDb" =<< sizeOf rocksDbDir
             logFunctionJson l Info . DbStats "pactDb" =<< sizeOf pactDbDir
-            approximateThreadDelay 1_200_000_000 {- 20 minutes -}
     sizeOf path = do
         dir <- doesDirectoryExist path
         file <- doesFileExist path
@@ -324,27 +312,28 @@ node conf logger = do
     withRocksDb' rocksDbDir modernDefaultOptions $ \rocksDb -> do
         logFunctionText logger Info $ "opened rocksdb in directory " <> sshow rocksDbDir
         logFunctionText logger Debug $ "backup config: " <> sshow (_configBackup cwConf)
-        withChainweb cwConf logger rocksDb pactDbDir dbBackupsDir $ \case
-            RewoundToCut _ -> return ()
-            StartedChainweb cw -> do
-                let telemetryEnabled =
-                        _enableConfigEnabled $ _logConfigTelemetryBackend $ _nodeConfigLog conf
-                concurrentlies_
-                    [ runChainweb cw (\_ -> return ())
+        runResourceT $ do
+            sched <- withScheduler (logFunctionText logger) =<< liftIO backgroundJobsPoolSize
+            liftIO $ withChainweb cwConf logger sched rocksDb pactDbDir dbBackupsDir $ \case
+                RewoundToCut _ -> return ()
+                StartedChainweb cw -> do
+                    let telemetryEnabled =
+                            _enableConfigEnabled $ _logConfigTelemetryBackend $ _nodeConfigLog conf
+                        sched' = _chainwebScheduler cw
+                    when telemetryEnabled $ do
+                        runCutMonitor sched' (_chainwebLogger cw) (_cutResCutDb $ _chainwebCutResources cw)
+                        runQueueMonitor sched' (_chainwebLogger cw) (_cutResCutDb $ _chainwebCutResources cw)
+                        runRtsMonitor sched' (_chainwebLogger cw)
+                        -- runBlockUpdateMonitor (_chainwebLogger cw) (_cutResCutDb $ _chainwebCutResources cw)
+                        runDatabaseMonitor sched' (_chainwebLogger cw) rocksDbDir pactDbDir
                     -- we should probably push 'onReady' deeper here but this should be ok
-                    , when telemetryEnabled $
-                        runCutMonitor (_chainwebLogger cw) (_cutResCutDb $ _chainwebCutResources cw)
-                    , when telemetryEnabled $
-                        runQueueMonitor (_chainwebLogger cw) (_cutResCutDb $ _chainwebCutResources cw)
-                    , when telemetryEnabled $
-                        runRtsMonitor (_chainwebLogger cw)
-                    -- , when telemetryEnabled $
-                    --     runBlockUpdateMonitor (_chainwebLogger cw) (_cutResCutDb $ _chainwebCutResources cw)
-                    , when telemetryEnabled $
-                        runDatabaseMonitor (_chainwebLogger cw) rocksDbDir pactDbDir
-                    ]
+                    runChainweb cw (\_ -> return ())
   where
     cwConf = _nodeConfigChainweb conf
+
+    backgroundJobsPoolSize = case _configBackgroundJobsPoolSize cwConf of
+        Just n -> return $! int n
+        Nothing -> max 1 . (`div` 2) <$> getNumCapabilities
 
 withNodeLogger
     :: HasVersion

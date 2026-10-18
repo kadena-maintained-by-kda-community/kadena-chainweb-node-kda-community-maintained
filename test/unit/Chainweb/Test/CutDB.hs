@@ -44,6 +44,7 @@ import Chainweb.Pact.Payload
 import Chainweb.Pact.Payload.PayloadStore
 import Chainweb.Pact.Types
 import Chainweb.PayloadProvider
+import Chainweb.Scheduler (withScheduler)
 import Chainweb.Storage.Table
 import Chainweb.Storage.Table.RocksDB
 import Chainweb.Sync.WebBlockHeaderStore
@@ -491,7 +492,9 @@ testCutPruning rdb = testCase "cut pruning" $ runResourceT $ withVersion (barebo
     -- initialize cut DB and mine enough to trigger pruning
     testLogger <- liftIO getTestLogger
     tmp <- withTempDir "donotuse"
+    sched <- withScheduler (\_ _ -> return ()) 2
     pps <- tabulateChainsM $ \cid -> view providerResPayloadProvider <$> withPayloadProviderResources
+        sched
         testLogger
         cid
         defaultServiceApiConfig
@@ -529,8 +532,10 @@ testCutGet rdb = testCase "cut get" $ withVersion (barebonesTestVersion pairChai
     let halfCh = ch `div` 2
     tmp <- withTempDir "donotuse"
     testLogger <- liftIO getTestLogger
+    sched <- withScheduler (\_ _ -> return ()) 2
 
     pps <- tabulateChainsM $ \cid -> view providerResPayloadProvider <$> withPayloadProviderResources
+        sched
         (genericLogger Error (\_ -> return ()))
         cid
         defaultServiceApiConfig

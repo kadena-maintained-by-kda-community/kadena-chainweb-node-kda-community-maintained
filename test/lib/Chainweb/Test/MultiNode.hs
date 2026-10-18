@@ -71,6 +71,7 @@ import Chainweb.Pact.Backend.PactState.GrandHash.Calc qualified as GrandHash.Cal
 import Chainweb.Pact.Backend.PactState.GrandHash.Import qualified as GrandHash.Import
 import Chainweb.Pact.Backend.PactState.GrandHash.Utils qualified as GrandHash.Utils
 import Chainweb.PayloadProvider.Pact.Configuration (defaultPactProviderConfig, PactProviderConfig (_pactConfigGenesisPayload), _pactConfigMiner)
+import Chainweb.Scheduler (withScheduler)
 import Chainweb.Storage.Table (IterableTable(withTableIterator), Casify)
 import Chainweb.Storage.Table.RocksDB
 import Chainweb.Test.P2P.Peer.BootstrapConfig
@@ -85,6 +86,8 @@ import Control.DeepSeq
 import Control.Exception
 import Control.Lens (set, view, (^?!), ix)
 import Control.Monad
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.Resource (runResourceT)
 import Data.Aeson (ToJSON, Value, object, (.=))
 import Data.ByteString (ByteString)
 import Data.ByteString.Base16 qualified as Base16
@@ -274,7 +277,9 @@ multiNode
     -> IO ()
 multiNode loglevel write bootstrapPeerInfoVar conf rdb pactDbDir nid inner = do
     withSystemTempDirectory "multiNode-backup-dir" $ \backupTmpDir ->
-            withChainweb conf logger namespacedNodeRocksDb (pactDbDir </> show nid) backupTmpDir $ \cw -> do
+        runResourceT $ do
+            sched <- withScheduler (logFunctionText logger) 2
+            liftIO $ withChainweb conf logger sched namespacedNodeRocksDb (pactDbDir </> show nid) backupTmpDir $ \cw -> do
                 case cw of
                     StartedChainweb cw' ->
                         when (nid == bootstrapNodeId) $ putMVar bootstrapPeerInfoVar

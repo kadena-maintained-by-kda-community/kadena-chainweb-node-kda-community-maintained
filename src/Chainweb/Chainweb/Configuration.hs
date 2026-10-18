@@ -74,6 +74,7 @@ module Chainweb.Chainweb.Configuration
 , configReadOnlyReplay
 , configSyncChains
 , configPayloadProviders
+, configBackgroundJobsPoolSize
 , defaultChainwebConfiguration
 , pChainwebConfiguration
 , validateChainwebConfiguration
@@ -114,6 +115,7 @@ import Data.Maybe
 import Data.Text qualified as T
 import Data.Text.Read qualified as T
 import GHC.Generics hiding (from, to)
+import GHC.Natural (Natural)
 import Network.Wai.Handler.Warp hiding (Port)
 import P2P.Node.Configuration
 import Prelude hiding (log)
@@ -563,6 +565,11 @@ data ChainwebConfiguration = ChainwebConfiguration
         -- ^ the only chains to be synchronized on startup to the latest cut.
         --   if unset, all chains will be synchronized.
 
+    , _configBackgroundJobsPoolSize :: !(Maybe Natural)
+        -- ^ the number of worker threads of the scheduler for background
+        --   jobs. If unset, a default of 'max 1 (getNumCapabilities div 2)'
+        --   is used.
+
     } deriving (Show, Eq, Generic)
 
 makeLenses ''ChainwebConfiguration
@@ -576,6 +583,11 @@ validateChainwebConfiguration c = do
         unless (c ^. configChainwebVersion . versionDefaults . disablePeerValidation) $
             validateP2pConfiguration (_configP2p c)
         validatePayloadProviderConfig (_configPayloadProviders c)
+        mapM_ checkBackgroundJobsPoolSize (_configBackgroundJobsPoolSize c)
+  where
+    checkBackgroundJobsPoolSize n =
+        unless (n >= 1) $
+            throwError "background jobs pool size must be at least 1"
 
 validateChainwebVersion :: ConfigValidation ChainwebVersion []
 validateChainwebVersion v = do
@@ -613,6 +625,7 @@ defaultChainwebConfiguration v = ChainwebConfiguration
     , _configSyncChains = Nothing
     , _configBackup = defaultBackupConfig
     , _configPayloadProviders = defaultPayloadProviderConfig
+    , _configBackgroundJobsPoolSize = Nothing
     }
 
 instance ToJSON ChainwebConfiguration where
@@ -629,6 +642,7 @@ instance ToJSON ChainwebConfiguration where
         , "backup" .= _configBackup o
         , "payloadProviders" .= _configPayloadProviders o
         , "pruning" .= _configPrune o
+        , "backgroundJobsPoolSize" .= _configBackgroundJobsPoolSize o
         ]
 
 instance FromJSON ChainwebConfiguration where
@@ -649,6 +663,7 @@ instance FromJSON (ChainwebConfiguration -> ChainwebConfiguration) where
         <*< configBackup %.: "backup" % o
         <*< configPayloadProviders %.: "payloadProviders" % o
         <*< configPrune %.: "pruning" % o
+        <*< configBackgroundJobsPoolSize ..: "backgroundJobsPoolSize" % o
 
 pChainwebConfiguration :: MParser ChainwebConfiguration
 pChainwebConfiguration = id
@@ -674,6 +689,9 @@ pChainwebConfiguration = id
     -- FIXME support payload providers
     <*< configPayloadProviders %:: pPayloadProviderConfig
     <*< configPrune %:: pPruneConfig
+    <*< configBackgroundJobsPoolSize .:: fmap Just % option auto
+        % prefixLong (Just "background-jobs") "pool-size"
+        <> suffixHelp (Just "background-jobs") "size of the thread pool for the background jobs scheduler"
 
 parseVersion :: MParser ChainwebVersion
 parseVersion = constructVersion

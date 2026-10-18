@@ -105,6 +105,7 @@ import Chainweb.PayloadProvider.Pact.Configuration
 import Chainweb.PayloadProvider.Pact.Genesis qualified as Pact
 import Chainweb.RestAPI.NetworkID
 import Chainweb.RestAPI.Utils
+import Chainweb.Scheduler (Scheduler)
 import Chainweb.Storage.Table
 import Chainweb.Storage.Table.RocksDB
 import Chainweb.Time
@@ -290,7 +291,8 @@ makeLenses ''ProviderResources
 withPayloadProviderResources
     :: Logger logger
     => HasVersion
-    => logger
+    => Scheduler
+    -> logger
     -> ChainId
     -> ServiceApiConfig
     -> Maybe (P2pConfiguration, PeerInfo, PeerDb, HTTP.Manager)
@@ -305,7 +307,7 @@ withPayloadProviderResources
         -- default db location from the chainweb configuration.
     -> PayloadProviderConfig
     -> ResourceT IO ProviderResources
-withPayloadProviderResources logger cid serviceApiConfig peerStuff rdb rewindLimit initialUnlimitedRewind defaultPactDbDir configs = do
+withPayloadProviderResources sched logger cid serviceApiConfig peerStuff rdb rewindLimit initialUnlimitedRewind defaultPactDbDir configs = do
     SomeChainwebVersionT @v' _ <- return $ someChainwebVersionVal
     SomeChainIdT @c' _ <- return $ someChainIdVal cid
     withSomeSing provider $ \case
@@ -394,7 +396,7 @@ withPayloadProviderResources logger cid serviceApiConfig peerStuff rdb rewindLim
                                         (pactPayloadProviderLogger pp)
                                         (pactPayloadProviderServiceEnv pp) txs
                                 )
-                    mempool <- Mempool.withInMemoryMempool (setComponent "mempool" logger) mempoolConfig
+                    mempool <- Mempool.withInMemoryMempool sched (setComponent "mempool" logger) mempoolConfig
                     let mpa = pactMemPoolAccess mempool $ addLabel ("sub-component", "MempoolAccess") logger
                 let queue = _payloadStoreQueue $ _psPdb $ pactPayloadProviderServiceEnv pp
                 p2pRes <- liftIO $ forM peerStuff $ \(p2pConfig, myPeerInfo, peerDb, mgr) ->
@@ -479,7 +481,8 @@ instance HasChainId (ChainResources logger) where
 withChainResources
     :: Logger logger
     => HasVersion
-    => logger
+    => Scheduler
+    -> logger
     -> ChainId
     -> RocksDb
     -> HTTP.Manager
@@ -497,7 +500,7 @@ withChainResources
         -- ^ whether to allow unlimited rewind on startup
     -> PayloadProviderConfig
     -> ResourceT IO (ChainResources logger)
-withChainResources logger cid rdb mgr defaultPactDbDir p2pConf serviceConf myInfo peerDb rewindLimit initialUnlimitedRewind configs = do
+withChainResources sched logger cid rdb mgr defaultPactDbDir p2pConf serviceConf myInfo peerDb rewindLimit initialUnlimitedRewind configs = do
 
     -- This uses the the CutNetwork for fetching block headers.
     cdb <- withBlockHeaderDb rdb cid
@@ -505,7 +508,7 @@ withChainResources logger cid rdb mgr defaultPactDbDir p2pConf serviceConf myInf
     -- Payload Providers are using per chain payload networks for fetching
     -- block headers.
     provider <- withPayloadProviderResources
-        providerLogger cid serviceConf (Just (p2pConf, myInfo, peerDb, mgr))
+        sched providerLogger cid serviceConf (Just (p2pConf, myInfo, peerDb, mgr))
         rdb rewindLimit initialUnlimitedRewind defaultPactDbDir configs
 
     return ChainResources

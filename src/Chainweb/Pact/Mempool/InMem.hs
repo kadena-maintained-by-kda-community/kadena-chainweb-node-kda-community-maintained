@@ -43,6 +43,7 @@ import Chainweb.Pact.Mempool.Mempool
 import Chainweb.Pact.Validations (defaultMaxTTLSeconds)
 import Chainweb.Pact4.Validations (defaultMaxCoinDecimalPlaces)
 import Chainweb.PayloadProvider (EvaluationCtx)
+import Chainweb.Scheduler (Scheduler, scheduleEvery)
 import Chainweb.Time
 import Chainweb.Utils
 import Chainweb.Version (ChainwebVersion)
@@ -162,22 +163,17 @@ startInMemoryMempoolTest cfg = do
 withInMemoryMempool
   :: Logger logger
   => NFData t
-  => logger
+  => Scheduler
+  -> logger
   -> InMemConfig t
   -> ResourceT IO (MempoolBackend t)
-withInMemoryMempool l cfg = do
+withInMemoryMempool sched l cfg = do
   inMem <- liftIO $ makeInMemPool cfg
-  monitorAsync <- withAsyncR (monitor inMem)
-  liftIO $ link monitorAsync
+  liftIO $ logFunctionText l Debug "Initialized Mempool Monitor"
+  liftIO $ scheduleEvery sched "Chainweb.Pact.Mempool.InMem.withInMemoryMempool.monitor" 60_000_000 $ do
+      stats <- getMempoolStats inMem
+      logFunctionJson l Info stats
   liftIO $ toMempoolBackend l inMem
-  where
-    monitor m = do
-        let lf = logFunction l
-        logFunctionText l Debug "Initialized Mempool Monitor"
-        runForeverThrottled lf "Chainweb.Pact.Mempool.InMem.withInMemoryMempool.monitor" 10 (10 * mega) $ do
-            stats <- getMempoolStats m
-            logFunctionJson l Info stats
-            approximateThreadDelay 60_000_000 {- 1 minute -}
 
 ------------------------------------------------------------------------------
 memberInMem :: MVar (InMemoryMempoolData t)

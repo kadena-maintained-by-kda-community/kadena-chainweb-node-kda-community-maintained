@@ -160,6 +160,7 @@ import Chainweb.PayloadProvider.Pact.Configuration
 import Chainweb.Ranked (Ranked(_rankedHeight))
 import Chainweb.RestAPI
 import Chainweb.RestAPI.NetworkID
+import Chainweb.Scheduler (withScheduler)
 import Chainweb.Storage.Table
 import Chainweb.Storage.Table.RocksDB
 import Chainweb.Test.P2P.Peer.BootstrapConfig (testBootstrapCertificate, testBootstrapKey, testBootstrapPeerConfig)
@@ -1014,20 +1015,22 @@ node
         -- ^ Unique Node Id. The node id 0 is used for the bootstrap node
     -> IO ()
 node rdb rawLogger nowServingRef peerInfoVar conf pactDbDir backupDir nid = do
-    withChainweb conf logger rdb pactDbDir backupDir $ \case
-        StartedChainweb cw -> do
-            -- If this is the bootstrap node we extract the port number and publish via an MVar.
-            when (nid == 0) $ do
-                let bootStrapInfo = view (chainwebPeer . peerResPeer . peerInfo) cw
-                    bootStrapPort = view (chainwebServiceSocket . _1) cw
-                putMVar peerInfoVar (bootStrapInfo, bootStrapPort)
+    runResourceT $ do
+        sched <- withScheduler (logFunctionText logger) 2
+        liftIO $ withChainweb conf logger sched rdb pactDbDir backupDir $ \case
+            StartedChainweb cw -> do
+                -- If this is the bootstrap node we extract the port number and publish via an MVar.
+                when (nid == 0) $ do
+                    let bootStrapInfo = view (chainwebPeer . peerResPeer . peerInfo) cw
+                        bootStrapPort = view (chainwebServiceSocket . _1) cw
+                    putMVar peerInfoVar (bootStrapInfo, bootStrapPort)
 
-            -- poisonDeadBeef cw
-            runChainweb cw (atomically . modifyTVar' nowServingRef) `finally` do
-                logFunctionText logger Info "write sample data"
-                logFunctionText logger Info "shutdown node"
-            return ()
-        RewoundToCut _ -> error "node: should not be a replay"
+                -- poisonDeadBeef cw
+                runChainweb cw (atomically . modifyTVar' nowServingRef) `finally` do
+                    logFunctionText logger Info "write sample data"
+                    logFunctionText logger Info "shutdown node"
+                return ()
+            RewoundToCut _ -> error "node: should not be a replay"
   where
     logger = addLabel ("node", sshow nid) rawLogger
 
