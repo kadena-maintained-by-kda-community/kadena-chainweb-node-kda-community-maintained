@@ -71,7 +71,7 @@ import Chainweb.Pact.Backend.PactState.GrandHash.Calc qualified as GrandHash.Cal
 import Chainweb.Pact.Backend.PactState.GrandHash.Import qualified as GrandHash.Import
 import Chainweb.Pact.Backend.PactState.GrandHash.Utils qualified as GrandHash.Utils
 import Chainweb.PayloadProvider.Pact.Configuration (defaultPactProviderConfig, PactProviderConfig (_pactConfigGenesisPayload), _pactConfigMiner)
-import Chainweb.Scheduler (withScheduler)
+import Chainweb.Scheduler (Scheduler, withScheduler)
 import Chainweb.Storage.Table (IterableTable(withTableIterator), Casify)
 import Chainweb.Storage.Table.RocksDB
 import Chainweb.Test.P2P.Peer.BootstrapConfig
@@ -266,26 +266,24 @@ harvestConsensusState logger stateVar nid (StartedChainweb cw) rdb = do
 
 multiNode
     :: LogLevel
-    -> (T.Text -> IO ())
     -> MVar PeerInfo
     -> ChainwebConfiguration
+    -> Scheduler
     -> RocksDb
     -> FilePath
     -> NodeId
         -- ^ Unique node id. Node id 0 is used for the bootstrap node
     -> (forall logger. NodeId -> StartedChainweb logger -> RocksDb -> IO ())
     -> IO ()
-multiNode loglevel write bootstrapPeerInfoVar conf rdb pactDbDir nid inner = do
+multiNode loglevel bootstrapPeerInfoVar conf sched rdb pactDbDir nid inner = do
     withSystemTempDirectory "multiNode-backup-dir" $ \backupTmpDir ->
-        runResourceT $ do
-            sched <- withScheduler (logFunctionText logger) 2
-            liftIO $ withChainweb conf logger sched namespacedNodeRocksDb (pactDbDir </> show nid) backupTmpDir $ \cw -> do
-                case cw of
-                    StartedChainweb cw' ->
-                        when (nid == bootstrapNodeId) $ putMVar bootstrapPeerInfoVar
-                            $ view (chainwebPeer . peerResPeer . peerInfo) cw'
-                    RewoundToCut _ -> return ()
-                inner nid cw namespacedNodeRocksDb
+        withChainweb conf logger sched namespacedNodeRocksDb (pactDbDir </> show nid) backupTmpDir $ \cw -> do
+            case cw of
+                StartedChainweb cw' ->
+                    when (nid == bootstrapNodeId) $ putMVar bootstrapPeerInfoVar
+                        $ view (chainwebPeer . peerResPeer . peerInfo) cw'
+                RewoundToCut _ -> return ()
+            inner nid cw namespacedNodeRocksDb
   where
     logger :: GenericLogger
     logger = addLabel ("node", toText nid) $ genericLogger loglevel T.putStrLn
@@ -305,22 +303,23 @@ runNodes
     -> FilePath
     -> (forall logger. NodeId -> StartedChainweb logger -> RocksDb -> IO ())
     -> IO ()
-runNodes loglevel write v confBuilders rdb pactDbDir inner = do
+runNodes loglevel write v confBuilders rdb pactDbDir inner = runResourceT $ do
     -- NOTE: pact is enabled until we have a good way to disable it globally in
     -- "Chainweb.Chainweb".
     --
     -- TODO: disable pact for these tests
     --
 
-    bootstrapPortVar <- newEmptyMVar
+    sched <- withScheduler (logFunctionText $ genericLogger loglevel write) 2
+    bootstrapPortVar <- liftIO newEmptyMVar
         -- this is a hack for testing: normally bootstrap node peer infos are
         -- hardcoded. To avoid conflicts in concurrent test runs we extract an
         -- OS assigned port from the bootstrap node during startup and inject it
         -- into the configuration of the remaining nodes.
     let baseConf = defaultChainwebConfiguration v
 
-    forConcurrently_ (zip [0..] confBuilders) $ \(i, confBuilder) -> do
-        threadDelay (500_000 * int i)
+    liftIO $ forConcurrently_ (zip [0..] confBuilders) $ \(i, confBuilder) -> do
+        threadDelay (100_000 * int i)
 
         conf <- if
             | i == 0 ->
@@ -328,7 +327,7 @@ runNodes loglevel write v confBuilders rdb pactDbDir inner = do
             | otherwise ->
                 setBootstrapPeerInfo <$> readMVar bootstrapPortVar <*> pure baseConf
 
-        multiNode loglevel write bootstrapPortVar (confBuilder conf) rdb pactDbDir (NodeId i) inner
+        multiNode loglevel bootstrapPortVar (confBuilder conf) sched rdb pactDbDir (NodeId i) inner
 
 runNodesForSeconds
     :: LogLevel
