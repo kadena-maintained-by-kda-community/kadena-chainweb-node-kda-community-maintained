@@ -280,6 +280,7 @@ library
         , Chainweb.Sync.WebBlockHeaderStore
         , Chainweb.Time
         , Chainweb.TreeDB
+        , Chainweb.Scheduler
         , Chainweb.Utils
         , Chainweb.Utils.Paging
         , Chainweb.Utils.RequestLog
