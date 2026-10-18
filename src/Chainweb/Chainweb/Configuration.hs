@@ -366,7 +366,7 @@ instance FromJSON (CutConfig -> CutConfig) where
 
 defaultCutConfig :: CutConfig
 defaultCutConfig = CutConfig
-    { _cutFetchTimeout = 3_000_000
+    { _cutFetchTimeout = 4_125_000
     , _cutInitialBlockHeightLimit = Nothing
     , _cutInitialCutFile = Nothing
     }

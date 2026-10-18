@@ -90,7 +90,7 @@ newCutDb latencyUs = do
     httpManager <- liftIO $ HTTP.newManager managerSettings
     headerStore <- liftIO $ newWebBlockHeaderStore httpManager webDb noopLogger
     Right cutDb <- withCutDb
-        (defaultCutDbParams 4125_000)
+        (defaultCutDbParams 4_125_000)
         noopLogger
         headerStore
         (onAllChains DisabledPayloadProvider)
