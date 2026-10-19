@@ -408,7 +408,7 @@ data ChainwebConfiguration = ChainwebConfiguration
         -- ^ module cache size limit in bytes
     , _configEnableLocalTimeout :: !Bool
     , _configLocalTimeout :: !Micros
-        -- ^^ Timeout to prevent long runnign transactions during /local calls
+        -- ^^ Timeout to prevent long running transactions during /local calls
     } deriving (Show, Eq, Generic)
 
 makeLenses ''ChainwebConfiguration
@@ -592,7 +592,7 @@ pChainwebConfiguration = id
         <> help "Enable timeout support on /local endpoints"
     <*< configLocalTimeout .:: jsonOption
         % long "local-timeout"
-        <> help "Tiemout in microseonds on /local endpoints"
+        <> help "Timeout in microseonds on /local endpoints"
 
 parseVersion :: MParser ChainwebVersion
 parseVersion = constructVersion
