@@ -526,16 +526,16 @@ getBlockHeaderInternal
         -- validate the payload for this block header.
         --
 
-        -- Compute a ForkInfo FOR A SINGLE BLOCK.
-        --
-        -- Do not produce payloads at this point; we may not stick around at
-        -- this block.
-        --
-        finfo <- forkInfoForHeader wdb header pld (Just parentHdr) False
-
         taskLog Debug $ "getBlockHeaderInternal: validate payload for " <> toText h
         case providers ^?! atChain cid of
             ConfiguredPayloadProvider provider -> do
+                -- Compute a ForkInfo FOR A SINGLE BLOCK.
+                --
+                -- Do not produce payloads at this point; we may not stick around at
+                -- this block.
+                --
+
+                finfo <- forkInfoForHeader wdb header pld (Just parentHdr) False
                 bhdb <- getWebBlockHeaderDb wdb cid
                 resolveForkInfo taskLog bhdb candidateHeaderCas provider hints finfo
             DisabledPayloadProvider -> do
