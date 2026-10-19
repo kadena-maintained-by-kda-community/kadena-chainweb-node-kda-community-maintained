@@ -141,6 +141,11 @@ source-repository-package
     --sha256: 16x2awn8v7dhdbz66a170xbmdj0pyxn1xwinqmsxhlq3qs35ncfj
 
 -- -------------------------------------------------------------------------- --
+-- Make sure we are using the SIMD enabled version of Base64
+constraints:
+    base64 +simd
+
+----------------------------------------------------------------------------------
 -- Relaxed Bounds
 
 -- GHC-9:
