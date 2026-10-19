@@ -374,13 +374,14 @@ makePrisms ''ForkHeight
 instance ToJSON ForkHeight where
     toJSON (ForkAtForkNumber n )= object ["forkNumber" .= n]
     toJSON (ForkAtBlockHeight h) = object ["blockHeight" .= h]
-    toJSON ForkAtGenesis= String "genesis"
+    toJSON ForkAtGenesis = String "genesis"
     toJSON ForkNever = String "never"
 
 succByHeight :: ForkHeight -> ForkHeight
 succByHeight (ForkAtBlockHeight x) = ForkAtBlockHeight $ succ x
+succByHeight (ForkAtForkNumber n) = ForkAtForkNumber n
 succByHeight ForkNever = ForkNever
-succByHeight _ = error "Only a Blockheight defined fork can be succ'ed"
+succByHeight ForkAtGenesis = ForkAtBlockHeight 1
 
 newtype ChainwebVersionName =
     ChainwebVersionName { getChainwebVersionName :: T.Text }
@@ -852,7 +853,7 @@ indexByForkHeights v = OnChains . foldl' go (HM.empty <$ HS.toMap (chainIds v))
 -- | The block height at all chains at which the latest known behavior changes
 -- will have taken effect: forks, upgrade transactions, or graph changes.
 latestBehaviorAt :: ChainwebVersion -> ForkHeight
-latestBehaviorAt v = foldlOf' behaviorChanges max' ForkAtGenesis v
+latestBehaviorAt v = succByHeight $ foldlOf' behaviorChanges max' ForkAtGenesis v
     where
     behaviorChanges = fold
         [ versionForks . folded . folded
