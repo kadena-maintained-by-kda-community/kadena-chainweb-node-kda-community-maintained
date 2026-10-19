@@ -223,7 +223,7 @@ base64DowngradeErrorMessage :: Text -> Text
 base64DowngradeErrorMessage msg = case msg of
   "Base64-encoded bytestring has invalid size" ->
        "invalid base64 encoding near offset 0"
--- Note : two be confirmed, but the two next shims shouldn't be necessary with base64 2.0
+-- Note : to be confirmed, but the two next shims shouldn't be necessary with base64 2.0
   (Text.stripPrefix "invalid character at offset: " -> Just suffix) ->
     Text.pack $ "invalid base64 encoding near offset " ++ show (adjustedOffset suffix)
   (Text.stripPrefix "invalid padding at offset: " -> Just suffix) ->
