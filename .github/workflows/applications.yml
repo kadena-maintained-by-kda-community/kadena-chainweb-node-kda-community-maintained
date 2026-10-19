@@ -88,12 +88,12 @@ jobs:
         DEBUG_INFO=${{ github.event.inputs.debugInfo }}
         if [[ -n "$DEBUG_INFO" && "${DEBUG_INFO^^}" = "TRUE" ]] ; then
           echo "building binaries with dwarf debug symbols"
-          echo "debug-info=True" >> $GITHUB_OUTPUT
+          echo "debug-info=2" >> $GITHUB_OUTPUT
           echo "stripping=False" >> $GITHUB_OUTPUT
           TAG_SUFFIX+=-dwarf
         else
           echo "building binaries without dwarf debug symbols"
-          echo "debug-info=False" >> $GITHUB_OUTPUT
+          echo "debug-info=0" >> $GITHUB_OUTPUT
           echo "stripping=True" >> $GITHUB_OUTPUT
         fi
 
