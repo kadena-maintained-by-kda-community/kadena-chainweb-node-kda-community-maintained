@@ -61,6 +61,7 @@ import Chainweb.Time
 import Chainweb.TreeDB
 import Chainweb.TreeDB qualified as TDB
 import Chainweb.Utils
+import Chainweb.Utils.Paging (Limit(..))
 import Chainweb.Version
 import Chainweb.Version.Utils (diameterAt)
 import Chainweb.WebBlockHeaderDB
@@ -69,17 +70,22 @@ import Control.Lens
 import Control.Monad
 import Control.Monad.Catch
 import Data.Foldable
+import Data.Foldable qualified as F
 import Data.Hashable
+import Data.HashSet qualified as HS
 import Data.LogMessage
 import Data.PQueue
+import Data.Semigroup (Min(..))
 import Data.TaskMap
 import Data.Text qualified as T
 import GHC.Generics (Generic)
 import GHC.Stack
 import Network.HTTP.Client qualified as HTTP
+import Numeric.Natural (Natural)
 import P2P.Peer
 import P2P.TaskQueue
 import Servant.Client
+import Streaming.Prelude qualified as S
 import System.LogLevel
 import Utils.Logging.Trace
 import Chainweb.Logger
@@ -667,6 +673,84 @@ newWebPayloadStore mgr payloadDb logfun = do
     return $! WebBlockPayloadStore
         payloadDb payloadMemo payloadTaskQueue logfun mgr
 
+-- | Maximum number of headers that are requested in a single prefetch
+-- request. The remote endpoint pages its results, so larger missing
+-- suffixes are still fetched completely, at one request per page.
+--
+prefetchBranchLimit :: Limit
+prefetchBranchLimit = Limit 1000
+
+-- | Prefetch the missing suffix of a chain from the cut origin in a single
+-- batched branch query and make the headers available in the candidate
+-- header store.
+--
+-- Without this prefetch, catching up on a chain costs one HTTP round trip
+-- per block height, because 'getBlockHeaderInternal' resolves prerequisites
+-- recursively, one header at a time. A single branch query returns the same
+-- headers in one round trip (per result page).
+--
+-- The query asks for all headers on the branch of the target that are
+-- strictly above the current local tip of the chain. If the target is not a
+-- descendant of the local tip, the minimum rank bound still caps the result
+-- to recent headers, and any headers that are actually needed but not
+-- prefetched are obtained through the regular per-header code path.
+--
+-- The prefetch is a pure optimization: all prefetched headers still go
+-- through the full validation in 'getBlockHeaderInternal'. Any failure is
+-- ignored, falling back to the regular per-header fetch.
+--
+prefetchOriginBranch
+    :: HasVersion
+    => Logger l
+    => BlockHeaderCas candidateHeaderCas
+    => WebBlockHeaderStore l
+    -> candidateHeaderCas
+    -> Maybe PeerInfo
+    -> ChainValue RankedBlockHash
+    -> IO ()
+prefetchOriginBranch _ _ Nothing _ = return ()
+prefetchOriginBranch headerStore candidateHeaderCas (Just origin) (ChainValue cid target) = do
+
+    -- The local tip defines the lower bound of the prefetch. If it can't be
+    -- determined, the prefetch is skipped entirely.
+    db <- getWebBlockHeaderDb wdb cid
+    etip <- try (maxEntry db)
+
+    case etip of
+        Left (_ :: SomeException) -> return ()
+        Right tip | int (rank tip) >= targetHeight -> return ()
+        Right tip -> do
+
+            let env = setResponseTimeout pullOriginResponseTimeout
+                    $ peerInfoClientEnv mgr origin
+                rdb = RemoteDb
+                    { _remoteEnv = env
+                    , _remoteLogFunction = ALogFunction logfun
+                    , _remoteChainId = cid
+                    }
+                lower = HS.singleton (LowerBound (key tip))
+                upper = HS.singleton (UpperBound targetHash)
+                mir = Just (MinRank (Min (succ $ rank tip)))
+
+            headers <-
+                ( branchEntries rdb Nothing (Just prefetchBranchLimit) mir Nothing lower upper
+                    S.toList_
+                ) `catch` \(_ :: SomeException) -> return []
+            unless (F.null headers) $
+                logg Debug $ "prefetched " <> sshow (length headers)
+                    <> " headers from origin for chain " <> toText cid
+            casInsertBatch candidateHeaderCas headers
+
+  where
+    wdb = _webBlockHeaderStoreCas headerStore
+    mgr = _webBlockHeaderStoreMgr headerStore
+    logfun :: LogFunction
+    logfun = logFunction $ _webBlockHeaderStoreLogger headerStore
+    logg :: LogFunctionText
+    logg = logfun @T.Text
+    targetHash = _rankedBlockHashHash target
+    targetHeight = int $ _rankedBlockHashHeight target :: Natural
+
 -- | Obtain and validate all prerequisite block headers and payloads for the
 -- given block hash and return the validated block header.
 --
@@ -688,7 +772,9 @@ getBlockHeader
     -> ChainValue RankedBlockHash
     -> IO BlockHeader
 getBlockHeader headerStore candidateHeaderCas candidatePldTbl providers localPayload priority maybeOrigin ch
-    = (\(ChainValue _ b) -> b) <$> go
+    = do
+    prefetchOriginBranch headerStore candidateHeaderCas maybeOrigin ch
+    (\(ChainValue _ b) -> b) <$> go
   where
     go = getBlockHeaderInternal
         headerStore
