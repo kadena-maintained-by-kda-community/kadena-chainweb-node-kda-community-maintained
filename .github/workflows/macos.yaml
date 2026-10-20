@@ -130,12 +130,12 @@ jobs:
       continue-on-error: true
       uses: larskuhtz/cabal-cache-action@4b537195b33898fcd9adc62cee2a44986fd7b1b6
       with:
-        bucket: "kadena-cabal-cache"
+        bucket: "community-kda-cabal-cache"
         region: "us-east-1"
         folder: "packages/${{ matrix.os }}"
         store_path: ${{ steps.setup.outputs.cabal-store }}
-        aws_access_key_id: "${{ secrets.kadena_cabal_cache_aws_access_key_id }}"
-        aws_secret_access_key: "${{ secrets.kadena_cabal_cache_aws_secret_access_key }}"
+        aws_access_key_id: "${{ secrets.kda_community_cabal_cache_aws_access_key_id }}"
+        aws_secret_access_key: "${{ secrets.kda_community_cabal_cache_aws_secret_access_key }}"
     - name: Install build dependencies
       run: cabal build chainweb --only-dependencies
     - name: Build chainweb library
