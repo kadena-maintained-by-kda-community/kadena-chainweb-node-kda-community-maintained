@@ -106,6 +106,7 @@ jobs:
         cabal freeze
     - name: Sync from cabal cache
       if: matrix.cabalcache == 'true'
+      continue-on-error: true
       uses: larskuhtz/cabal-cache-action@4b537195b33898fcd9adc62cee2a44986fd7b1b6
       with:
         bucket: "kadena-cabal-cache"
