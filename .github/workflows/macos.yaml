@@ -77,6 +77,27 @@ jobs:
           /Users/runner/.ghcup
         key: ${{ steps.ghc-cabal-cache.outputs.cache-primary-key }}
 
+    - name: Fix toolchain/SDK mismatch
+      # Workaround for: ld: tapi error: malformed file ... MacOSX27.0.sdk ... 
+      # unknown architecture arm64e.x1-macos. This happens when clang and ld
+      # are picked from different toolchains (Xcode vs Command Line Tools).
+      # Select a consistent toolchain by testing which one can link.
+      run: |
+        echo 'int main(void){return 0;}' > /tmp/toolchain-test.c
+        if ! clang /tmp/toolchain-test.c -o /tmp/toolchain-test 2>/dev/null; then
+          echo "Default toolchain cannot link; switching to Xcode toolchain"
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+        fi
+        if ! clang /tmp/toolchain-test.c -o /tmp/toolchain-test 2>/dev/null; then
+          echo "Xcode toolchain cannot link; switching to Command Line Tools"
+          sudo xcode-select -s /Library/Developer/CommandLineTools
+        fi
+        if ! clang /tmp/toolchain-test.c -o /tmp/toolchain-test 2>/dev/null; then
+          echo "No working toolchain found" 1>&2
+          exit 1
+        fi
+        clang -v
+        ld -v
     - name: Install non-Haskell dependencies (macOS)
       run: |
         brew install -q gflags llvm snappy || true
