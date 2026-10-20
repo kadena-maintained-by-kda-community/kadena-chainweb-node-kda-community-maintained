@@ -734,8 +734,8 @@ prop_block_genesis_target b = isGenesisBlockHeader b
 prop_block_current :: Time Micros -> BlockHeader -> Bool
 prop_block_current t b = BlockCreationTime t >= view blockCreationTime b
 
-prop_block_featureFlags :: HasVersion => BlockHeader -> Bool
-prop_block_featureFlags b
+_prop_block_featureFlags :: HasVersion => BlockHeader -> Bool
+_prop_block_featureFlags b
     | skipFeatureFlagValidationGuard cid h = True
     | otherwise = view blockFlags b == ForkState 0
   where

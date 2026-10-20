@@ -126,7 +126,6 @@ import Chainweb.Difficulty
 import Chainweb.Parent
 import Chainweb.PayloadProvider (EncodedPayloadData (..), EncodedPayloadOutputs)
 import Chainweb.ForkState(ForkNumber(..))
-import Chainweb.Time
 import Chainweb.Utils
 import Chainweb.Utils.Serialization
 import Chainweb.Version

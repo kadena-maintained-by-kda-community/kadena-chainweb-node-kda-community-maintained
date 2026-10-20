@@ -136,7 +136,6 @@ import Data.Set qualified as S
 import Data.Text (Text)
 import Data.Text qualified as T
 import Pact.Core.Command.Types qualified as Pact5
-import Pact.Core.Command.RPC qualified as Pact5
 import Pact.Core.Errors (VerifierError(..))
 import Pact.Core.Gas qualified as Pact5
 import Pact.Eval (eval, liftTerm)
@@ -603,7 +602,9 @@ applyCoinbase logger blockEnv miner reward@(ParsedDecimal d)
     go interp cexec
   where
     bctx = blockEnv ^. benvBlockCtx
-    (Miner mid mks@(MinerKeys mk)) = miner
+    (mid, mks, mk) = case miner of
+        Miner mid' mks'@(MinerKeys mk') -> (mid', mks', mk')
+        Miner _ _ -> error "invalid miner guard"
     chainweb213Pact' = chainweb213Pact cid bh
     fork1_3InEffect = vuln797Fix cid bh
     throwCritical = fork1_3InEffect || enfCBFailure

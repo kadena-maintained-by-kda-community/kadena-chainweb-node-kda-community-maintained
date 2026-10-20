@@ -25,7 +25,6 @@ import Chainweb.Version
 import Data.These
 import Data.Vector qualified as V
 import qualified Pact.Core.Command.Types as Pact
-import qualified Pact.Core.ChainData as Pact
 
 validatingMempoolConfig
     :: HasVersion

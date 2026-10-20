@@ -113,7 +113,7 @@ createTransactionOutputProof
     -> Int
         -- ^ The index of the transaction in the block
     -> IO (TransactionOutputProof ChainwebMerkleHashAlgorithm)
-createTransactionOutputProof cutDb tcid scid =
+createTransactionOutputProof _cutDb _tcid _scid =
     error "Chainweb.SPV.CreateProof.createTransactionOutputProof: FIXME: not yet implemented"
 --   createSmallTransactionOutputProof
 --     (view cutDbWebBlockHeaderDb cutDb)
@@ -159,7 +159,7 @@ outputProofPrefix
     -> BlockHeight
     -> BlockPayloadHash
     -> IO PayloadProofPrefix
-outputProofPrefix provider i bh ph = do
+outputProofPrefix _provider _i _bh _ph = do
     error "Chainweb.SPV.CreateProof.outputProofPrefix: FIXME: not yet implemented"
 --  where
 --

@@ -21,6 +21,7 @@ import Chainweb.Graph
 import Chainweb.Time
 import Chainweb.Utils
 import Chainweb.Utils.Rule
+import Chainweb.Pact.InitialGasModel (post32GasModel)
 import Chainweb.Version
 
 import Pact.Core.Names
@@ -61,6 +62,10 @@ evmDevnetPair = withVersion evmDevnetPair $ ChainwebVersion
     , _versionName = ChainwebVersionName "evm-development-pair"
     , _versionForks = tabulateHashMap $ const $ onAllChains ForkAtGenesis
     , _versionUpgrades = onAllChains mempty
+    , _versionForkNumber = 1
+    , _versionForkVoteCastingLength = 20
+    , _versionSpvProofRootValidWindow = Bottom (minBound, Nothing)
+    , _versionInitialGasModel = onAllChains $ Bottom (minBound, post32GasModel)
     , _versionGraphs = Bottom (minBound, pairChainGraph)
     , _versionBlockDelay = BlockDelay 30_000_000
     , _versionWindow = WindowWidth 120
@@ -110,6 +115,10 @@ evmDevnetSingleton = withVersion evmDevnetSingleton $ ChainwebVersion
     , _versionName = ChainwebVersionName "evm-development-singleton"
     , _versionForks = tabulateHashMap $ const $ onAllChains ForkAtGenesis
     , _versionUpgrades = onAllChains mempty
+    , _versionForkNumber = 1
+    , _versionForkVoteCastingLength = 20
+    , _versionSpvProofRootValidWindow = Bottom (minBound, Nothing)
+    , _versionInitialGasModel = onAllChains $ Bottom (minBound, post32GasModel)
     , _versionGraphs = Bottom (minBound, singletonChainGraph)
     , _versionBlockDelay = BlockDelay 30_000_000
     , _versionWindow = WindowWidth 120

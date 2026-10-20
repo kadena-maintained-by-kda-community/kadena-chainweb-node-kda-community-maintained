@@ -485,7 +485,7 @@ applyPactCmd
       (T2 ModuleCache (Maybe Pact4.Gas))
       (ExceptT BlockInvalidError IO)
       (Pact4.CommandResult [Pact4.TxLogJson])
-applyPactCmd logger serviceEnv blockEnv txIdxInBlock miner cmd = StateT $ \(T2 mcache maybeBlockGasRemaining) -> do
+applyPactCmd logger _serviceEnv blockEnv txIdxInBlock miner cmd = StateT $ \(T2 mcache maybeBlockGasRemaining) -> do
   let pactDb = blockEnv ^. benvDbEnv . cpPactDbEnv
   let
     requestedTxGasLimit = view Pact4.cmdGasLimit (Pact4.payloadObj <$> cmd)

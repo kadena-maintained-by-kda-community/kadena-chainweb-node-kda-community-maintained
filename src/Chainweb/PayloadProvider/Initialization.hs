@@ -22,7 +22,7 @@ import Data.Text qualified as T
 
 -- | FIXME: this should be refined
 --
-newtype MinerInfo = MinerInfo T.Text
+type MinerInfo = T.Text
 
 -- | Globally initialized resources that are needed by payload providers.
 --

@@ -104,7 +104,6 @@ module Chainweb.RestAPI.Utils
 
 import Control.Exception (Exception, throw)
 import Control.Monad.Catch (bracket)
-import Control.Monad.IO.Class
 
 import Data.Aeson
 import qualified Data.ByteString.Lazy as BSL
@@ -127,8 +126,6 @@ import Network.Wai.Handler.Warp (HostPreference)
 import Servant.API hiding (addHeader)
 import Servant.Client
 import Servant.Server
-import Servant.Server.Internal.Delayed
-import Servant.Server.Internal.DelayedIO
 
 -- internal modules
 import Chainweb.ChainId

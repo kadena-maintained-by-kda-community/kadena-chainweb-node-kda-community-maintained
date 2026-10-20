@@ -350,7 +350,7 @@ someServiceApiServer
     -> Maybe (BackupEnv logger)
     -> PayloadBatchLimit
     -> SomeServer
-someServiceApiServer dbs mr (HeaderStream hs) backupEnv pbl =
+someServiceApiServer dbs mr (HeaderStream hs) backupEnv _pbl =
     someHealthCheckServer
     <> maybe mempty someBackupServer backupEnv
     <> maybe mempty someNodeInfoServer cuts

@@ -571,7 +571,7 @@ minimalLatestPayloadStm = readTMVar . _minimalPayloadVar
 --   overhead for this exceptional scenario.
 --
 candidatePruningDepth :: HasVersion => MinimalPayloadProvider -> BlockHeight -> BlockHeight
-candidatePruningDepth p h = int $ diameter (chainGraphAt h)
+candidatePruningDepth _p h = int $ diameter (chainGraphAt h)
 
 pruneCandidates :: HasVersion => MinimalPayloadProvider -> ConsensusState -> IO ()
 pruneCandidates p s = deleteLt (_minimalCandidatePayloads p) lrh

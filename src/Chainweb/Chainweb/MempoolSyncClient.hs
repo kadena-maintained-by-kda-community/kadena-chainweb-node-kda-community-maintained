@@ -57,7 +57,7 @@ runMempoolSyncClient
     -> ChainResources logger
         -- ^ chain resources
     -> IO ()
-runMempoolSyncClient mgr memP2pConfig peerRes chain =
+runMempoolSyncClient _mgr _memP2pConfig _peerRes _chain =
     error "Chainweb.Chainweb.MempoolSyncClient.mempoolSyncClient: only supported for pact service which is currently disabled"
 --    bracket create destroy go
 --   where
@@ -88,12 +88,12 @@ runMempoolSyncClient mgr memP2pConfig peerRes chain =
 -- the mempool should be part of pact. The API can be published to the node API
 -- in the same way the Payload APIs are published.
 --
-mempoolSyncP2pSession
+_mempoolSyncP2pSession
     :: HasVersion
     => ChainResources logger
     -> Seconds
     -> P2pSession
-mempoolSyncP2pSession chain (Seconds pollInterval) logg0 env _ = do
+_mempoolSyncP2pSession _chain (Seconds _pollInterval) _logg0 _env _ = do
     error "Chainweb.Chainweb.MempoolSyncClient.mempoolSyncP2pSession: only supported for pact service which is currently disabled"
 --     logg Debug "mempool sync session starting"
 --     Mempool.syncMempools' logg syncIntervalUs pool peerMempool

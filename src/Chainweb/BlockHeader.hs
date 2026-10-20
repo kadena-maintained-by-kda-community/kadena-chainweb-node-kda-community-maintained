@@ -121,7 +121,6 @@ import Chainweb.BlockHeader.Internal qualified as I
 import Chainweb.BlockHeight (BlockHeight)
 import Chainweb.BlockWeight (BlockWeight)
 import Chainweb.Parent
-import Chainweb.ChainId (ChainId)
 import Chainweb.Difficulty (HashTarget)
 import Chainweb.BlockPayloadHash
 import Chainweb.Version (ChainwebVersionCode)

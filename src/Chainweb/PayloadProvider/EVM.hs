@@ -302,13 +302,13 @@ stateIO = readTVarIO . _evmState
 latestStateIO :: EvmPayloadProvider logger -> IO SyncState
 latestStateIO = fmap (_consensusStateLatest . sfst) . stateIO
 
-isPayloadRequestedIO :: EvmPayloadProvider logger -> IO Bool
-isPayloadRequestedIO p = case _evmMinerAddress p of
+_isPayloadRequestedIO :: EvmPayloadProvider logger -> IO Bool
+_isPayloadRequestedIO p = case _evmMinerAddress p of
     Nothing -> return False
     Just _ -> isJust . ssnd <$> stateIO p
 
-newBlockCtxIO :: EvmPayloadProvider logger -> IO (Maybe NewBlockCtx)
-newBlockCtxIO p = case _evmMinerAddress p of
+_newBlockCtxIO :: EvmPayloadProvider logger -> IO (Maybe NewBlockCtx)
+_newBlockCtxIO p = case _evmMinerAddress p of
     Nothing -> return Nothing
     Just _ -> ssnd <$> stateIO p
 
@@ -1504,7 +1504,7 @@ evmSyncToBlock p hints forkInfo = withLock (_evmLock p) $ do
 --   overhead for this exceptional scenario.
 --
 candidatePruningDepth :: HasVersion => EvmPayloadProvider logger -> BlockHeight -> BlockHeight
-candidatePruningDepth p h = int $ diameter (chainGraphAt h)
+candidatePruningDepth _p h = int $ diameter (chainGraphAt h)
 
 pruneCandidates :: HasVersion => EvmPayloadProvider logger -> IO ()
 pruneCandidates p = do
@@ -1558,13 +1558,13 @@ getPayloadForContext p h ctx = do
 
 -- | Fetch payloads for a list of evaluation contexts.
 --
-getPayloadForContexts
+_getPayloadForContexts
     :: Logger logger
     => EvmPayloadProvider logger
     -> Maybe Hints
     -> [EvaluationCtx ConsensusPayload]
     -> IO [(RankedBlockPayloadHash, Payload)]
-getPayloadForContexts p h ctxs =
+_getPayloadForContexts p h ctxs =
     getPayloadsForConsensusPayloads p h $ _evaluationCtxRankedPayload <$> ctxs
 
 getPayloadsForConsensusPayloads
@@ -1612,7 +1612,7 @@ validatePayload
     -> Payload
     -> EvaluationCtx ConsensusPayload
     -> IO ()
-validatePayload p pld ctx = do
+validatePayload p pld _ctx = do
 
     -- FIXME: this requires that we have the full evaluation context available,
     -- which includes all transactions. This is potentially expensive.
@@ -1753,8 +1753,8 @@ _safeNumber = EVM.heightToNumber . _safeHeight
 _finalNumber :: ConsensusState -> EVM.BlockNumber
 _finalNumber = EVM.heightToNumber . _finalHeight
 
-encodedPayloadData :: Payload -> EncodedPayloadData
-encodedPayloadData = EncodedPayloadData . putRlpByteString
+_encodedPayloadData :: Payload -> EncodedPayloadData
+_encodedPayloadData = EncodedPayloadData . putRlpByteString
 
 decodePayloadData :: MonadThrow m => EncodedPayloadData -> m Payload
 decodePayloadData (EncodedPayloadData bs) = decodeRlpM bs
@@ -1766,11 +1766,11 @@ decodePayloadData (EncodedPayloadData bs) = decodeRlpM bs
 -- -------------------------------------------------------------------------- --
 -- Engine Calls
 
-getHashByNumber
+_getHashByNumber
     :: JsonRpcHttpCtx
     -> DefaultBlockParameter
     -> IO (Maybe EVM.BlockHash)
-getHashByNumber ctx p = fmap EVM._hdrHash <$>
+_getHashByNumber ctx p = fmap EVM._hdrHash <$>
     callMethodHttp @Eth_GetBlockByNumber ctx (p, False)
 
 -- | Obtains a block by EVM block hash. It is an exception if the block can not
@@ -1784,11 +1784,11 @@ getHashByNumber ctx p = fmap EVM._hdrHash <$>
 -- * Eth RPC failures
 -- * JSON RPC failures
 --
-getBlockByHash
+_getBlockByHash
     :: EvmPayloadProvider pdf
     -> EVM.BlockHash
     -> IO EVM.Header
-getBlockByHash p h = do
+_getBlockByHash p h = do
     r <- RPC.callMethodHttp
         @Eth_GetBlockByHash (_evmEngineCtx p) (h, False)
     case r of
@@ -1806,11 +1806,11 @@ getBlockByHash p h = do
 -- * Eth RPC failures
 -- * JSON RPC failures
 --
-getBlockAtNumber
+_getBlockAtNumber
     :: EvmPayloadProvider pdf
     -> EVM.BlockNumber
     -> IO EVM.Header
-getBlockAtNumber p n = do
+_getBlockAtNumber p n = do
     r <- RPC.callMethodHttp
         @Eth_GetBlockByNumber (_evmEngineCtx p) (DefaultBlockNumber n, False)
     case r of
@@ -1827,10 +1827,10 @@ getBlockAtNumber p n = do
 -- * Eth RPC failures
 -- * JSON RPC failures
 --
-getGenesisHeader
+_getGenesisHeader
     :: EvmPayloadProvider pdf
     -> IO EVM.Header
-getGenesisHeader p = try (getBlockAtNumber p 0) >>= \case
+_getGenesisHeader p = try (_getBlockAtNumber p 0) >>= \case
     Left (EvmHeaderNotFoundByNumber _) -> throwM EvmGenesisHeaderNotFound
     Left e -> throwM e
     Right x -> return x
@@ -1850,12 +1850,12 @@ getGenesisHeader p = try (getBlockAtNumber p 0) >>= \case
 --     match the block in the payload state. This usually means that the
 --     referenced block is on different fork.
 --
-getLatestHdr
+_getLatestHdr
     :: EvmPayloadProvider pdb
     -> ConsensusState
     -> IO EVM.Header
-getLatestHdr p s = do
-    hdr <- getBlockAtNumber p (_latestNumber s)
+_getLatestHdr p s = do
+    hdr <- _getBlockAtNumber p (_latestNumber s)
     unless (view EVM.hdrPayloadHash hdr == _latestPayloadHash s) $
         throwM $ EvmHeaderNotFoundByPayloadHash (_latestPayloadHash s)
     return hdr
@@ -1874,12 +1874,12 @@ getLatestHdr p s = do
 --     referenced block is on different fork. For this to happen the latest
 --     block must be on a different fork, too.
 --
-getSafeHdr
+_getSafeHdr
     :: EvmPayloadProvider pdb
     -> ConsensusState
     -> IO EVM.Header
-getSafeHdr p s = do
-    hdr <- getBlockAtNumber p (_safeNumber s)
+_getSafeHdr p s = do
+    hdr <- _getBlockAtNumber p (_safeNumber s)
     unless (view EVM.hdrPayloadHash hdr == _safePayloadHash s) $
         throwM $ EvmHeaderNotFoundByPayloadHash (_safePayloadHash s)
     return hdr
@@ -1898,12 +1898,12 @@ getSafeHdr p s = do
 --     referenced block is on different fork. For this to happen the latest and
 --     safe block must be on a different fork, too.
 --
-getFinalHdr
+_getFinalHdr
     :: EvmPayloadProvider pdb
     -> ConsensusState
     -> IO EVM.Header
-getFinalHdr p s = do
-    hdr <- getBlockAtNumber p (_finalNumber s)
+_getFinalHdr p s = do
+    hdr <- _getBlockAtNumber p (_finalNumber s)
     unless (view EVM.hdrPayloadHash hdr == _finalPayloadHash s) $
         throwM $ EvmHeaderNotFoundByPayloadHash (_finalPayloadHash s)
     return hdr
@@ -1912,28 +1912,28 @@ getFinalHdr p s = do
 --
 -- Cf. 'getLatestHeader' for details.
 --
-getLatestHash
+_getLatestHash
     :: EvmPayloadProvider pdb
     -> ConsensusState
     -> IO EVM.BlockHash
-getLatestHash p = fmap (view EVM.hdrHash) . getLatestHdr p
+_getLatestHash p = fmap (view EVM.hdrHash) . _getLatestHdr p
 
 -- | Get the hash for the safe block in a consensus state.
 --
 -- Cf. 'getSafeHeader' for details.
 --
-getSafeHash
+_getSafeHash
     :: EvmPayloadProvider pdb
     -> ConsensusState
     -> IO EVM.BlockHash
-getSafeHash p = fmap (view EVM.hdrHash) . getSafeHdr p
+_getSafeHash p = fmap (view EVM.hdrHash) . _getSafeHdr p
 
 -- | Get the hash for the final block in a consensus state.
 --
 -- Cf. 'getFinalHeader' for details.
 --
-getFinalHash
+_getFinalHash
     :: EvmPayloadProvider pdb
     -> ConsensusState
     -> IO EVM.BlockHash
-getFinalHash p = fmap (view EVM.hdrHash) . getFinalHdr p
+_getFinalHash p = fmap (view EVM.hdrHash) . _getFinalHdr p

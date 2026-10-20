@@ -969,13 +969,13 @@ toCoinUnit :: Decimal -> Decimal
 toCoinUnit = roundTo 12
 {-# INLINE toCoinUnit #-}
 
-dumpGasLogs :: (Logger logger)
+_dumpGasLogs :: (Logger logger)
   => Text -- ^ context
   -> Hash -- ^ Command Hash
   -> Maybe logger -- ^ Gas logger
   -> GasEnv CoreBuiltin Info
   -> IO ()
-dumpGasLogs ctx txHash maybeGasLogger gasEnv = do
+_dumpGasLogs ctx txHash maybeGasLogger gasEnv = do
   forM_ ((,) <$> _geGasLog gasEnv <*> maybeGasLogger) $ \(gasLogRef, gasLogger) -> do
     gasLogs <- reverse <$> readIORef gasLogRef
     let prettyLogs = Pact.prettyGasLogs (_geGasModel gasEnv) (_gleArgs <$> gasLogs)

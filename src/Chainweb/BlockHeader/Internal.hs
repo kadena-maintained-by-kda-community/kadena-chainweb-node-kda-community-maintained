@@ -185,7 +185,6 @@ import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HM
 import Data.HashSet qualified as HS
 import Data.Hashable
-import Data.IORef
 import Data.Kind
 import Data.Memory.Endian qualified as BA
 import Data.MerkleLog.Root
@@ -197,7 +196,6 @@ import Numeric.AffineSpace
 import Numeric.Natural
 import Text.Read (readEither)
 import Control.Monad
-import System.IO.Unsafe
 import Chainweb.ForkState
 
 -- -------------------------------------------------------------------------- --
@@ -668,11 +666,6 @@ genesisRankedParentBlockHash :: (HasVersion, HasChainId p) => p -> Parent Ranked
 genesisRankedParentBlockHash p = Parent $ RankedBlockHash
     (genesisHeight (_chainId p))
     (unwrapParent $ genesisParentBlockHash p)
-
-{-# NOINLINE genesisBlockHeaderCache #-}
-genesisBlockHeaderCache :: IORef (HashMap ChainwebVersionCode (HashMap ChainId BlockHeader))
-genesisBlockHeaderCache = unsafePerformIO $ do
-    newIORef HM.empty
 
 -- | A block chain is globally uniquely identified by its genesis hash.
 -- Internally, we use the 'ChainwebVersionTag value and the 'ChainId'

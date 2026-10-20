@@ -96,7 +96,6 @@ module Chainweb.Chainweb
 import Configuration.Utils hiding (Error, Lens', disabled)
 
 import Control.Concurrent (threadDelay)
-import Control.Concurrent.Async
 import Control.DeepSeq
 import Control.Exception.Safe
 import Control.Lens hiding ((.=), (<.>))
@@ -112,8 +111,6 @@ import Data.List qualified as L
 import Data.LogMessage (LogFunctionText)
 import Data.Maybe
 import Data.Text qualified as T
-import Data.These (These(..))
-import Data.Vector qualified as V
 import Data.Word
 
 import GHC.Generics hiding (to)
@@ -152,7 +149,6 @@ import Chainweb.Pact.Mempool.InMem.ValidatingConfig
 import Chainweb.Pact.Mempool.Mempool qualified as Mempool
 import Chainweb.Miner.Config
 import Chainweb.OpenAPIValidation qualified as OpenAPIValidation
-import Chainweb.Pact.RestAPI.Server (PactServerData(..))
 import Chainweb.Pact.Transaction qualified as Pact
 import Chainweb.RestAPI
 import Chainweb.RestAPI.NetworkID
@@ -308,9 +304,6 @@ withChainwebInternal conf logger peerRes serviceSock sched rocksDb defaultPactDb
   where
     cids :: HS.HashSet ChainId
     cids = chainIds
-
-    cidsList :: [ChainId]
-    cidsList = toList cids
 
     mgr :: HTTP.Manager
     mgr = _peerResManager peerRes
@@ -638,15 +631,6 @@ runChainweb cw nowServing = do
     chains :: [(ChainId, ChainResources logger)]
     chains = itoList (_chainwebChains cw)
 
-    chainVals :: [ChainResources logger]
-    chainVals = map snd chains
-
-    -- collect server resources
-    proj :: forall a . (ChainResources logger -> a) -> [(ChainId, a)]
-    proj f = chains <&> _2 %~ f
-
-    peerDb = _peerResDb (_chainwebPeer cw)
-
     -- FIXME export the SomeServer instead of DBs?
     -- I.e. the handler would be created in the chain resource.
     -- Similar to how it is done with the payload provider APIs.
@@ -657,10 +641,6 @@ runChainweb cw nowServing = do
     mempoolsToServe :: ChainMap (Mempool.MempoolBackend Pact.Transaction)
     -- mempoolsToServe = proj _chainResMempool
     mempoolsToServe = mempty
-
-    pactDbsToServe :: [(ChainId, PactServerData logger tbl)]
-    -- pactDbsToServe = _chainwebPactData cw
-    pactDbsToServe = []
 
     -- As long as all Pact payload providers live within the consensus node, it
     -- probably makes sense to serve the P2P network for mempools through the

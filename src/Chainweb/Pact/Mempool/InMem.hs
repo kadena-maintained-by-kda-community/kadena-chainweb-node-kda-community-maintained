@@ -34,8 +34,6 @@ import Data.Foldable (foldlM)
 import Data.Foldable (foldl', foldlM)
 #endif
 
-import Chainweb.BlockHash
-import Chainweb.BlockHeight
 import Chainweb.Logger
 import Chainweb.Pact.Mempool.CurrentTxs
 import Chainweb.Pact.Mempool.InMemTypes
@@ -46,12 +44,10 @@ import Chainweb.PayloadProvider (EvaluationCtx)
 import Chainweb.Scheduler (Scheduler, scheduleEvery)
 import Chainweb.Time
 import Chainweb.Utils
-import Chainweb.Version (ChainwebVersion)
 import Control.Applicative ((<|>))
-import Control.Concurrent.Async
 import Control.Concurrent.MVar
 import Control.DeepSeq
-import Control.Exception (evaluate, mask_, throw)
+import Control.Exception (evaluate, mask_)
 import Control.Lens
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
@@ -76,9 +72,7 @@ import Data.Vector (Vector)
 import Data.Vector qualified as V
 import Data.Vector.Algorithms.Tim qualified as TimSort
 import Numeric.AffineSpace
-import Pact.Parse
 import Pact.Core.Gas
-import Pact.Types.ChainMeta qualified as P
 import Prelude hiding (init, lookup, pred)
 import System.LogLevel
 import System.Random

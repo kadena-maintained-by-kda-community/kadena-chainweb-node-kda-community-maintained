@@ -48,7 +48,6 @@ import Numeric.Natural
 
 import Pact.Core.Command.Types
 import Pact.Core.Errors
-import Pact.Core.Hash
 
 -- internal modules
 

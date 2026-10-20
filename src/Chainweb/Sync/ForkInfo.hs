@@ -68,8 +68,8 @@ instance Exception ForkInfoSyncFailure
 -- We do not include a new block context for chunked forkinfo resolutions.
 -- Mining should be performed only on a fully caught up payload provider.
 
-forkInfoChunkSize :: Int
-forkInfoChunkSize = 1000
+_forkInfoChunkSize :: Int
+_forkInfoChunkSize = 1000
 
 -- -------------------------------------------------------------------------- --
 

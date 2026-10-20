@@ -119,7 +119,6 @@ import Pact.Core.Gas qualified as Pact
 import Pact.Core.Hash qualified as Pact
 import Pact.Core.Info qualified as Pact
 import Pact.Core.Persistence qualified as Pact
-import Pact.Core.StableEncoding qualified as Pact
 import Pact.JSON.Encode qualified as J
 import Prelude hiding (lookup)
 import Servant.Client (ClientM)

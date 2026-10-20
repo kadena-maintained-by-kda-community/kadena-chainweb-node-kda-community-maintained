@@ -151,6 +151,7 @@ import Data.Text.Encoding qualified as T
 import Data.Vector (Vector)
 import Data.Word
 import GHC.Generics (Generic)
+import Language.Haskell.TH (mkName, nameBase)
 import Pact.Core.Builtin qualified as Pact
 import Pact.Core.Capabilities qualified as Pact
 import Pact.Core.ChainData qualified as Pact
@@ -193,11 +194,6 @@ import Chainweb.BlockHeight
 import Chainweb.BlockHash
 import Chainweb.Parent
 import Chainweb.MinerReward
-import Chainweb.Pact.Payload
-import Data.ByteString.Short (ShortByteString)
-import qualified Data.ByteString.Short as SB
-import qualified Data.Vector as V
-import Data.Maybe
 import Chainweb.BlockCreationTime
 import Control.Concurrent.Async
 import qualified Data.Aeson as A
@@ -367,7 +363,14 @@ data BlockCtx = BlockCtx
   , _bctxMinerReward :: !MinerReward
   } deriving stock (Eq, Generic, Show)
 
-makeLenses ''BlockCtx
+-- The lens for '_bctxParentForkNumber' is not generated because it is unused.
+--
+makeLensesWith
+    (lensRules & lensField .~ \_ _ f ->
+        if nameBase f == "_bctxParentForkNumber"
+        then []
+        else [TopName $ mkName $ dropWhile (== '_') $ nameBase f])
+    ''BlockCtx
 
 instance ToJSON BlockCtx where
   toJSON BlockCtx{..} = object

@@ -35,7 +35,7 @@ module Chainweb.BlockHeaderDB.PruneForks
 ) where
 
 import Control.DeepSeq (NFData)
-import Control.Exception (evaluate, throw)
+import Control.Exception (throw)
 import Control.Lens (ix, view, (^?!), iforM_, (%~))
 import Control.Monad
 import Control.Monad.Catch
@@ -77,13 +77,10 @@ import Chainweb.Time qualified
 import Data.LogMessage
 import Chainweb.WebBlockHeaderDB
 import Chainweb.Cut
-import Chainweb.CutDB
 import Control.Monad.Cont
 import Chainweb.Scheduler (Scheduler, scheduleEvery)
 import Data.Foldable
-import Data.Functor ((<&>))
 import Data.Ord
-import Control.Concurrent
 import Chainweb.BlockHeader.Validation (validateIntrinsicM)
 import Data.Aeson (FromJSON, ToJSON)
 

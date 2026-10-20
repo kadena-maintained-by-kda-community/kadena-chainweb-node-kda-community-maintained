@@ -60,14 +60,14 @@ instance Exception XChainException
 newtype EventId = EventId (E.BytesN 32)
     deriving (Show, Eq, Generic, E.Bytes)
 
-xChainInitializedSignature :: B.ByteString
-xChainInitializedSignature = "CrosschainInitialized(uint32,address,uint64,bytes)"
+_xChainInitializedSignature :: B.ByteString
+_xChainInitializedSignature = "CrosschainInitialized(uint32,address,uint64,bytes)"
 
-xChainInitializedId :: EventId
-xChainInitializedId = EventId
+_xChainInitializedId :: EventId
+_xChainInitializedId = EventId
     $ E._getKeccak256Hash
     $ E.keccak256
-    $ xChainInitializedSignature
+    $ _xChainInitializedSignature
 
 -- -------------------------------------------------------------------------- --
 -- Crosschain Operation Name
