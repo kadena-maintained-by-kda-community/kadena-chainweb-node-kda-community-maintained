@@ -149,7 +149,7 @@ jobs:
             {
               # These are the build values that will be used for release scripts
               "ghc": "9.14.1",
-              "cabal": ["3.16"],
+              "cabal": "3.16",
               "os": "ubuntu-22.04",
               "use-freeze-file": "true"
             }
@@ -167,13 +167,13 @@ jobs:
           "include" : [
             {
               "ghc": "9.14.1",
-              "cabal": ["3.16"],
+              "cabal": "3.16",
               "os": "ubuntu-24.04",
               "use-freeze-file": "false"
             },
             {
               "ghc": "9.14.1",
-              "cabal": ["3.16"],
+              "cabal": "3.16",
               "os": "macos-latest",
               "use-freeze-file": "false"
             },
