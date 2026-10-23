@@ -166,13 +166,13 @@ jobs:
           "use-freeze-file": ["false"],
           "include" : [
             {
-              "ghc": "9.12.2",
+              "ghc": "9.14.1",
               "cabal": ["3.16"],
               "os": "ubuntu-24.04",
               "use-freeze-file": "false"
             },
             {
-              "ghc": "9.12.2",
+              "ghc": "9.14.1",
               "cabal": ["3.16"],
               "os": "macos-latest",
               "use-freeze-file": "false"
